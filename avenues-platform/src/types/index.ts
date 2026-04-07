@@ -268,6 +268,23 @@ export interface ChartDataPoint {
   meta?: Record<string, unknown>;
 }
 
+export type ChartPrimitive = string | number | null | undefined;
+export type ChartRecord = Record<string, ChartPrimitive>;
+
+export interface ChartTooltipEntry<TPayload extends ChartRecord = ChartRecord> {
+  color?: string;
+  name?: string;
+  value?: ChartPrimitive;
+  dataKey?: string | number;
+  payload?: TPayload;
+}
+
+export interface ChartTooltipProps<TPayload extends ChartRecord = ChartRecord> {
+  active?: boolean;
+  label?: string | number;
+  payload?: ChartTooltipEntry<TPayload>[];
+}
+
 export interface TimeSeriesData {
   month: string;
   value: number;

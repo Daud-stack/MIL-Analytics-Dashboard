@@ -38,7 +38,7 @@ interface PipelineStep {
 }
 
 // Compute model results from revenue variance
-const computeModelResults = (metrics: any[]): ModelResult[] => {
+const computeModelResults = (metrics: number[]): ModelResult[] => {
   if (!metrics || metrics.length === 0) return [];
 
   const mean = metrics.reduce((a, b) => a + b, 0) / metrics.length;
@@ -97,7 +97,7 @@ const computeModelResults = (metrics: any[]): ModelResult[] => {
   ];
 };
 
-const computeFeatureImportance = (metrics: any[]): any[] => {
+const computeFeatureImportance = (metrics: number[]): Array<{ feature: string; importance: number }> => {
   if (!metrics || metrics.length === 0) return [];
   const mean = metrics.reduce((a, b) => a + b, 0) / metrics.length;
   const variance = metrics.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / metrics.length;
@@ -112,7 +112,7 @@ const computeFeatureImportance = (metrics: any[]): any[] => {
   ];
 };
 
-const generateCVScores = (): any[] => [
+const generateCVScores = (): Array<{ fold: string; score: number }> => [
   { fold: '1', score: 94.0 },
   { fold: '2', score: 93.5 },
   { fold: '3', score: 94.2 },

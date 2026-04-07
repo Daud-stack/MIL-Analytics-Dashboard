@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import { Beaker, AlertCircle } from 'lucide-react';
 import { useDashboard } from '@/store';
+import type { DashboardMetrics } from '@/types';
 
 type TestType = 't-test' | 'chi-square' | 'anova' | 'shapiro-wilk' | 'z-test';
 
@@ -30,7 +31,7 @@ interface TestResult {
 }
 
 // Generate sample data from dashboard metrics
-const generateSampleData = (metrics: any) => {
+const generateSampleData = (metrics: DashboardMetrics | null) => {
   if (!metrics?.monthRevenue) {
     return {
       group1: [220, 225, 230, 235, 240, 245, 250, 255, 260, 265],
@@ -344,7 +345,7 @@ export default function StatisticalTestsPage() {
                 {/* Effect Size */}
                 {results.effectSize !== undefined && (
                   <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
-                    <p className="text-xs text-orange-700 font-medium">Effect Size (Cohen's d)</p>
+                    <p className="text-xs text-orange-700 font-medium">Effect Size (Cohen&apos;s d)</p>
                     <p className="text-2xl font-bold text-orange-900 mt-1">
                       {results.effectSize.toFixed(4)}
                     </p>

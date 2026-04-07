@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { Button } from '@/components/ui/button';
-import { MONTHS } from '@/types';
+import { ChartTooltipProps, MONTHS } from '@/types';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { useLocation, useDashboard, useCurrentYear } from '@/store';
 
@@ -43,12 +43,12 @@ interface ChartDataPoint {
   zScore: number;
 }
 
-const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: ChartDataPoint; value: number }> }) => {
+const CustomTooltip = ({ active, payload }: ChartTooltipProps<ChartDataPoint>) => {
   if (active && payload && payload.length) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
-        <p className="text-sm font-medium text-gray-900">{payload[0].payload.name}</p>
-        <p className="text-sm text-blue-600">{formatNumber(payload[0].value as number)}</p>
+        <p className="text-sm font-medium text-gray-900">{payload[0].payload?.name}</p>
+        <p className="text-sm text-blue-600">{formatNumber(Number(payload[0].value ?? 0))}</p>
       </div>
     );
   }
@@ -72,7 +72,7 @@ export default function DrilldownPage() {
       case 'year': {
         // Yearly data by specialty
         const grouped = locData.doctors
-          .reduce((acc: Record<string, any>, doc) => {
+          .reduce((acc: Record<string, ChartDataPoint>, doc) => {
             const spec = doc.specialty ?? 'Unknown';
             if (!acc[spec]) {
               acc[spec] = {
@@ -86,8 +86,8 @@ export default function DrilldownPage() {
             acc[spec].revenue += doc.revenue;
             acc[spec].admissions += Math.floor(doc.episodes * (0.3 + 0.2));
             return acc;
-          }, {} as Record<string, any>);
-        return Object.values(grouped).map((d: any) => ({ ...d, zScore: 0 }));
+          }, {} as Record<string, ChartDataPoint>);
+        return Object.values(grouped).map((d) => ({ ...d, zScore: 0 }));
       }
 
       case 'specialty': {
@@ -135,7 +135,7 @@ export default function DrilldownPage() {
     }
   };
 
-  const chartData = useMemo(() => generateChartData(), [drillState.level, drillState.selectedSpecialty, metric, locData]);
+  const chartData = generateChartData();
   const metricKey = metric === 'admissions' ? 'admissions' : metric;
 
   // Calculate summary stats

@@ -8,13 +8,13 @@ export interface ColumnConfig {
   key: string;
   header: string;
   sortable?: boolean;
-  format?: (value: any) => string;
+  format?: (value: unknown) => string;
   align?: 'left' | 'center' | 'right';
 }
 
 export interface DataTableProps {
   columns: ColumnConfig[];
-  data: any[];
+  data: Record<string, unknown>[];
   searchable?: boolean;
   exportable?: boolean;
   pageSize?: number;

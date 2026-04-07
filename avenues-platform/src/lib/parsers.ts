@@ -705,17 +705,17 @@ export function exportYearDataToCSV(yearData: YearData): Record<string, string> 
 
   if (yearData.dashboard) {
     const data = [yearData.dashboard];
-    files[`dashboard_${yearData.year}.csv`] = exportToCSV(data as any, `dashboard_${yearData.year}.csv`);
+    files[`dashboard_${yearData.year}.csv`] = exportToCSV(data, `dashboard_${yearData.year}.csv`);
   }
 
   if (yearData.location) {
     const data = [yearData.location];
-    files[`location_${yearData.year}.csv`] = exportToCSV(data as any, `location_${yearData.year}.csv`);
+    files[`location_${yearData.year}.csv`] = exportToCSV(data, `location_${yearData.year}.csv`);
   }
 
   if (yearData.claims) {
     const data = [yearData.claims];
-    files[`claims_${yearData.year}.csv`] = exportToCSV(data as any, `claims_${yearData.year}.csv`);
+    files[`claims_${yearData.year}.csv`] = exportToCSV(data, `claims_${yearData.year}.csv`);
   }
 
   return files;

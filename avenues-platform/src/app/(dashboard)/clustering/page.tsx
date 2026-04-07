@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { Zap, AlertCircle } from 'lucide-react';
 import { useDashboard } from '@/store';
+import type { DashboardMetrics } from '@/types';
 
 interface ClusterPoint {
   x: number;
@@ -34,7 +35,7 @@ interface ClusterInfo {
 }
 
 // Generate cluster data from real monthly revenue/occupancy
-const generateClusterData = (k: number, metrics: any): ClusterPoint[] => {
+const generateClusterData = (k: number, metrics: DashboardMetrics | null): ClusterPoint[] => {
   const data: ClusterPoint[] = [];
   if (!metrics?.monthRevenue || !metrics?.theatreUtil) return data;
 
@@ -45,13 +46,13 @@ const generateClusterData = (k: number, metrics: any): ClusterPoint[] => {
     idx,
   }));
 
-  const revMin = Math.min(...points.map((p: any) => p.revenue));
-  const revMax = Math.max(...points.map((p: any) => p.revenue));
-  const occMin = Math.min(...points.map((p: any) => p.occupancy));
-  const occMax = Math.max(...points.map((p: any) => p.occupancy));
+  const revMin = Math.min(...points.map((p) => p.revenue));
+  const revMax = Math.max(...points.map((p) => p.revenue));
+  const occMin = Math.min(...points.map((p) => p.occupancy));
+  const occMax = Math.max(...points.map((p) => p.occupancy));
 
   // Normalize to 0-100 scale
-  const normalized = points.map((p: any) => ({
+  const normalized = points.map((p) => ({
     x: ((p.occupancy - occMin) / (occMax - occMin + 1)) * 100,
     y: ((p.revenue - revMin) / (revMax - revMin + 1)) * 2500,
   }));
@@ -62,8 +63,8 @@ const generateClusterData = (k: number, metrics: any): ClusterPoint[] => {
     y: 1250 + (i % 2) * 500,
   }));
 
-  normalized.forEach((point: any, idx: number) => {
-    const distances = centroids.map((c: any) => Math.sqrt(Math.pow(point.x - c.x, 2) + Math.pow(point.y - c.y, 2)));
+  normalized.forEach((point) => {
+    const distances = centroids.map((c) => Math.sqrt(Math.pow(point.x - c.x, 2) + Math.pow(point.y - c.y, 2)));
     const cluster = distances.indexOf(Math.min(...distances));
     data.push({ x: point.x, y: point.y, cluster });
   });

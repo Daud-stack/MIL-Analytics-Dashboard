@@ -11,6 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { ChartRecord, ChartPrimitive } from '@/types';
 
 export interface YKeyConfig {
   key: string;
@@ -19,7 +20,7 @@ export interface YKeyConfig {
 }
 
 export interface AreaChartProps {
-  data: any[];
+  data: ChartRecord[];
   xKey: string;
   yKeys: YKeyConfig[];
   height?: number;
@@ -48,7 +49,9 @@ export const AreaChartComponent: React.FC<AreaChartProps> = ({
         <XAxis dataKey={xKey} stroke="#666" />
         <YAxis tickFormatter={formatYAxisTick} stroke="#666" />
         <Tooltip
-          formatter={(value: any) => formatY ? formatY(value) : value}
+          formatter={(value: ChartPrimitive) =>
+            typeof value === 'number' && formatY ? formatY(value) : value ?? ''
+          }
           contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px' }}
         />
         {showLegend && <Legend />}

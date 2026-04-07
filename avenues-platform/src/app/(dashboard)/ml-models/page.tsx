@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import { Brain, AlertCircle } from 'lucide-react';
 import { useDashboard } from '@/store';
+import type { DashboardMetrics } from '@/types';
 
 type ModelType = 'naive-bayes' | 'logistic-regression' | 'linear-regression';
 
@@ -42,7 +43,7 @@ interface ROCData {
 }
 
 // Compute confusion matrix from data variance
-const computeConfusionMatrices = (data: any) => {
+const computeConfusionMatrices = (data: DashboardMetrics | null) => {
   if (!data?.monthRevenue) {
     return { nb: { TP: 42, FP: 8, TN: 38, FN: 12 }, lr: { TP: 45, FP: 5, TN: 40, FN: 10 }, linear: { TP: 48, FP: 3, TN: 42, FN: 7 } };
   }

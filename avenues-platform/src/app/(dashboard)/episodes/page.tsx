@@ -18,22 +18,22 @@ import {
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
-import { MONTHS } from '@/types';
+import { ChartTooltipProps, MONTHS } from '@/types';
 import { formatCurrency, formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useDashboard } from '@/store';
 import Link from 'next/link';
 
 const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7', '#059669', '#dc2626'];
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (active && payload && payload.length) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
         <p className="text-sm font-medium text-gray-900">{label}</p>
-        {payload.map((entry: any, idx: number) => (
+        {payload.map((entry, idx: number) => (
           <p key={idx} style={{ color: entry.color }} className="text-sm">
             {entry.name}: {typeof entry.value === 'number'
-              ? entry.dataKey?.includes('Revenue')
+              ? String(entry.dataKey).includes('Revenue')
                 ? formatCurrency(entry.value)
                 : formatNumber(entry.value)
               : entry.value}

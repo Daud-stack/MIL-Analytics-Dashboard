@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { Calendar, Download, AlertCircle } from 'lucide-react';
 import { useStore } from '@/store';
+import type { DashboardMetrics, YearData } from '@/types';
 
 interface MonthlyData {
   month: string;
@@ -31,7 +32,7 @@ interface YearlyMetric {
 
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const generateMonthlyComparison = (selectedYears: number[], yearDataMap: Map<number, any>): MonthlyData[] => {
+const generateMonthlyComparison = (selectedYears: number[], yearDataMap: Map<number, YearData>): MonthlyData[] => {
   return months.map((month, idx) => {
     const data: MonthlyData = { month };
     selectedYears.forEach((year) => {
@@ -44,7 +45,7 @@ const generateMonthlyComparison = (selectedYears: number[], yearDataMap: Map<num
   });
 };
 
-const calculateYearlyMetrics = (year: number, dashboard: any): YearlyMetric => {
+const calculateYearlyMetrics = (year: number, dashboard: DashboardMetrics | null): YearlyMetric => {
   const monthlyData = dashboard?.monthRevenue || [];
   const total = monthlyData.reduce((a: number, b: number) => a + b, 0);
   const average = monthlyData.length > 0 ? total / monthlyData.length : 0;

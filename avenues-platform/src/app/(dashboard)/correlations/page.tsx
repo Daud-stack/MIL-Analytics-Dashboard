@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useDashboard } from '@/store';
+import type { DashboardMetrics } from '@/types';
 
 type Variable = 'Revenue' | 'Episodes' | 'Occupancy' | 'Theatre' | 'Pharmacy' | 'LOS' | 'PatientDays';
 
@@ -21,6 +22,8 @@ interface Correlation {
   coefficient: number;
   pValue: number;
 }
+
+type CorrelationMatrix = Record<Variable, Record<Variable, number>>;
 
 // Pearson correlation calculator
 const calculatePearsonCorrelation = (x: number[], y: number[]): { r: number; pValue: number } => {
@@ -56,7 +59,7 @@ const calculatePearsonCorrelation = (x: number[], y: number[]): { r: number; pVa
 
 // Generate scatter data from correlation
 const generateScatterData = (x: number[], y: number[]) => {
-  const data = [];
+  const data: Array<{ x: number; y: number }> = [];
   for (let i = 0; i < Math.min(x.length, y.length); i++) {
     data.push({ x: x[i], y: y[i] });
   }
@@ -81,6 +84,29 @@ const getSignificanceStars = (pValue: number) => {
   return '';
 };
 
+const getMetricArray = (dashboard: DashboardMetrics | null, variable: Variable): number[] => {
+  if (!dashboard) return [];
+
+  switch (variable) {
+    case 'Revenue':
+      return dashboard.monthRevenue || [];
+    case 'Episodes':
+      return dashboard.monthEpisodes || [];
+    case 'Occupancy':
+      return dashboard.occupancyBeds || [];
+    case 'Theatre':
+      return dashboard.theatreUtil || [];
+    case 'Pharmacy':
+      return dashboard.pharmacyRev || [];
+    case 'LOS':
+      return dashboard.patDaysLOC ? Object.values(dashboard.patDaysLOC).flat() : [];
+    case 'PatientDays':
+      return dashboard.patientDays ? Object.values(dashboard.patientDays).flat() : [];
+    default:
+      return [];
+  }
+};
+
 export default function CorrelationsPage() {
   const [selectedVar1, setSelectedVar1] = useState<Variable>('Revenue');
   const [selectedVar2, setSelectedVar2] = useState<Variable>('Episodes');
@@ -88,33 +114,8 @@ export default function CorrelationsPage() {
 
   const variables: Variable[] = ['Revenue', 'Episodes', 'Occupancy', 'Theatre', 'Pharmacy', 'LOS', 'PatientDays'];
 
-  // Extract metric arrays from dashboard
-  const getMetricArray = (variable: Variable): number[] => {
-    if (!dashboard) return [];
-
-    switch (variable) {
-      case 'Revenue':
-        return dashboard.monthRevenue || [];
-      case 'Episodes':
-        return dashboard.monthEpisodes || [];
-      case 'Occupancy':
-        return dashboard.occupancyBeds || [];
-      case 'Theatre':
-        return dashboard.theatreUtil || [];
-      case 'Pharmacy':
-        return dashboard.pharmacyRev || [];
-      case 'LOS':
-        return dashboard.patDaysLOC ? Object.values(dashboard.patDaysLOC).flat() : [];
-      case 'PatientDays':
-        return dashboard.patientDays ? Object.values(dashboard.patientDays).flat() : [];
-      default:
-        return [];
-    }
-  };
-
-  // Build correlation matrix
-  const correlationMatrix = useMemo(() => {
-    const matrix: { [key: string]: { [key: string]: number } } = {};
+  const correlationMatrix = (() => {
+    const matrix = {} as CorrelationMatrix;
 
     for (const var1 of variables) {
       matrix[var1] = {};
@@ -124,8 +125,8 @@ export default function CorrelationsPage() {
         } else if (matrix[var2]?.[var1] !== undefined) {
           matrix[var1][var2] = matrix[var2][var1];
         } else {
-          const arr1 = getMetricArray(var1);
-          const arr2 = getMetricArray(var2);
+          const arr1 = getMetricArray(dashboard, var1);
+          const arr2 = getMetricArray(dashboard, var2);
           const { r } = calculatePearsonCorrelation(arr1, arr2);
           matrix[var1][var2] = r;
         }
@@ -133,24 +134,24 @@ export default function CorrelationsPage() {
     }
 
     return matrix;
-  }, [dashboard]);
+  })();
 
   // Compute selected pair stats and all correlations
-  const { scatterData, correlation, pValue, topPositive, topNegative } = useMemo(() => {
+  const { scatterData, correlation, pValue, topPositive, topNegative } = (() => {
     // Handle missing dashboard
     if (!dashboard) {
       return {
-        scatterData: [],
+        scatterData: [] as Array<{ x: number; y: number }>,
         correlation: 0,
         pValue: 1,
-        topPositive: [],
-        topNegative: [],
+        topPositive: [] as Correlation[],
+        topNegative: [] as Correlation[],
       };
     }
 
     // Get correlation stats for selected pair
-    const arr1 = getMetricArray(selectedVar1);
-    const arr2 = getMetricArray(selectedVar2);
+    const arr1 = getMetricArray(dashboard, selectedVar1);
+    const arr2 = getMetricArray(dashboard, selectedVar2);
     const { r: correlation, pValue } = calculatePearsonCorrelation(arr1, arr2);
     const scatterData = generateScatterData(arr1, arr2);
 
@@ -160,8 +161,8 @@ export default function CorrelationsPage() {
       for (let j = i + 1; j < variables.length; j++) {
         const var1 = variables[i];
         const var2 = variables[j];
-        const arr1 = getMetricArray(var1);
-        const arr2 = getMetricArray(var2);
+        const arr1 = getMetricArray(dashboard, var1);
+        const arr2 = getMetricArray(dashboard, var2);
         const { r, pValue } = calculatePearsonCorrelation(arr1, arr2);
         allCorrelations.push({ var1, var2, coefficient: r, pValue });
       }
@@ -178,7 +179,7 @@ export default function CorrelationsPage() {
       .slice(0, 5);
 
     return { scatterData, correlation, pValue, topPositive, topNegative };
-  }, [dashboard, selectedVar1, selectedVar2]);
+  })();
 
   if (!dashboard) {
     return (

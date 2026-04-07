@@ -221,8 +221,7 @@ export const useStore = create<StoreState>()(
         setItem: (key: string, value: { state: StoreState; version?: number }) => {
           if (typeof window === 'undefined') return;
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const stateToSave: Record<string, any> = { ...value.state };
+            const stateToSave: Record<string, unknown> = { ...value.state };
             // Handle Map serialization if years exists and is a Map
             if (stateToSave.years instanceof Map) {
               stateToSave.years = Array.from((stateToSave.years as Map<number, YearData>).entries()).map(([year, data]) => [

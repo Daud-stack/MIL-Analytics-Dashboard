@@ -19,21 +19,21 @@ import {
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
-import { MONTHS } from '@/types';
+import { ChartTooltipProps, MONTHS } from '@/types';
 import { formatCurrency, formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useDashboard } from '@/store';
 import Link from 'next/link';
 
 const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7'];
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (active && payload && payload.length) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
         <p className="text-sm font-medium text-gray-900">{label}</p>
-        {payload.map((entry: any, index: number) => (
+        {payload.map((entry, index: number) => (
           <p key={index} style={{ color: entry.color }} className="text-sm">
-            {entry.name}: {typeof entry.value === 'number' && entry.dataKey?.includes('Revenue')
+            {entry.name}: {typeof entry.value === 'number' && String(entry.dataKey).includes('Revenue')
               ? formatCurrency(entry.value)
               : formatNumber(entry.value)}
           </p>
@@ -293,7 +293,7 @@ export default function DashboardPage() {
                   innerRadius={60}
                   outerRadius={100}
                   labelLine={false}
-                  label={({ name, value }) => `${name}: ${formatCurrency(value as any).slice(0, 10)}`}
+                  label={({ name, value }) => `${name}: ${formatCurrency(Number(value ?? 0)).slice(0, 10)}`}
                   fill="#8884d8"
                   dataKey="value"
                 >

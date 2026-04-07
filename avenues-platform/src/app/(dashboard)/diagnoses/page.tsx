@@ -21,6 +21,7 @@ import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
 import { formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useLocation } from '@/store';
+import { ChartTooltipProps } from '@/types';
 
 const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7', '#059669', '#dc2626'];
 
@@ -33,12 +34,12 @@ interface ChartData {
   percentage?: number;
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (active && payload && payload.length) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
         <p className="text-sm font-medium text-gray-900">{label}</p>
-        {payload.map((entry: any, index: number) => (
+        {payload.map((entry, index: number) => (
           <p key={index} style={{ color: entry.color }} className="text-sm">
             {entry.name}: {typeof entry.value === 'number' ? formatNumber(entry.value) : entry.value}
           </p>
@@ -170,16 +171,19 @@ export default function DiagnosesPage() {
 
   // Pareto chart data (Top ICD with cumulative %)
   const totalICDCount = icdArray.reduce((sum, d) => sum + d.count, 0);
-  let cumulativeCount = 0;
-  const paretoData = icdArray.map((d) => {
-    cumulativeCount += d.count;
-    return {
-      code: `${d.code}`,
-      count: d.count,
-      cumulative: cumulativeCount,
-      percentage: (cumulativeCount / totalICDCount) * 100,
-    };
-  });
+  const paretoData = icdArray.reduce<Array<{ code: string; count: number; cumulative: number; percentage: number }>>(
+    (acc, d) => {
+      const cumulative = (acc.at(-1)?.cumulative ?? 0) + d.count;
+      acc.push({
+        code: `${d.code}`,
+        count: d.count,
+        cumulative,
+        percentage: (cumulative / totalICDCount) * 100,
+      });
+      return acc;
+    },
+    []
+  );
 
   // Filter tables
   const filteredICD = icdArray.filter(

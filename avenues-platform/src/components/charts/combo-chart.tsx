@@ -14,9 +14,10 @@ import {
 } from 'recharts';
 import { BarConfig } from './bar-chart';
 import { LineConfig } from './line-chart';
+import { ChartRecord, ChartPrimitive } from '@/types';
 
 export interface ComboChartProps {
-  data: any[];
+  data: ChartRecord[];
   xKey: string;
   bars?: BarConfig[];
   lines?: LineConfig[];
@@ -47,7 +48,9 @@ export const ComboChartComponent: React.FC<ComboChartProps> = ({
         <XAxis dataKey={xKey} stroke="#666" />
         <YAxis tickFormatter={formatYAxisTick} stroke="#666" />
         <Tooltip
-          formatter={(value: any) => formatY ? formatY(value) : value}
+          formatter={(value: ChartPrimitive) =>
+            typeof value === 'number' && formatY ? formatY(value) : value ?? ''
+          }
           contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px' }}
         />
         {showLegend && <Legend />}

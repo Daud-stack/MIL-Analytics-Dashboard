@@ -17,7 +17,7 @@ import {
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
-import { MONTHS } from '@/types';
+import { ChartRecord, ChartTooltipProps, MONTHS } from '@/types';
 import { formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useDashboard } from '@/store';
 
@@ -30,12 +30,12 @@ interface ChartData {
   occupancyPct?: number;
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (active && payload && payload.length) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
         <p className="text-sm font-medium text-gray-900">{label}</p>
-        {payload.map((entry: any, index: number) => (
+        {payload.map((entry, index: number) => (
           <p key={index} style={{ color: entry.color }} className="text-sm">
             {entry.name}: {typeof entry.value === 'number' ? formatNumber(entry.value) : entry.value}
           </p>
@@ -153,20 +153,11 @@ export default function WardBedsPage() {
     }))
     .sort((a, b) => b.patientDays - a.patientDays);
 
-  // Occupancy trend per ward (monthly data for each ward)
-  const wardOccupancyTrend = WARDS.map((ward, idx) => {
-    const wardData = metrics.pctOccWard[ward] || metrics.theatrePctOcc;
-    return wardData.map((occ, monthIdx) => ({
-      month: MONTHS[monthIdx].substring(0, 3),
-      [ward]: occ,
-    }));
-  });
-
   // Merge monthly data for multi-line chart
-  const mergedTrendData: any[] = [];
+  const mergedTrendData: ChartRecord[] = [];
   for (let i = 0; i < 12; i++) {
-    const monthData: any = { month: MONTHS[i].substring(0, 3) };
-    WARDS.forEach((ward, idx) => {
+    const monthData: ChartRecord = { month: MONTHS[i].substring(0, 3) };
+    WARDS.forEach((ward) => {
       const wardData = metrics.pctOccWard[ward] || metrics.theatrePctOcc;
       monthData[ward] = wardData[i];
     });

@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { ChevronDown } from "lucide-react";
 
 interface DropdownMenuContextType {
   isOpen: boolean;
@@ -53,8 +52,7 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ children }) => {
   );
 };
 
-interface DropdownMenuTriggerProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
+type DropdownMenuTriggerProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 const DropdownMenuTrigger = React.forwardRef<
   HTMLButtonElement,
@@ -81,8 +79,7 @@ const DropdownMenuTrigger = React.forwardRef<
 });
 DropdownMenuTrigger.displayName = "DropdownMenuTrigger";
 
-interface DropdownMenuContentProps
-  extends React.HTMLAttributes<HTMLDivElement> {}
+type DropdownMenuContentProps = React.HTMLAttributes<HTMLDivElement>;
 
 const DropdownMenuContent = React.forwardRef<
   HTMLDivElement,
@@ -107,8 +104,7 @@ const DropdownMenuContent = React.forwardRef<
 });
 DropdownMenuContent.displayName = "DropdownMenuContent";
 
-interface DropdownMenuItemProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
+type DropdownMenuItemProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 const DropdownMenuItem = React.forwardRef<
   HTMLButtonElement,
@@ -133,8 +129,7 @@ const DropdownMenuItem = React.forwardRef<
 });
 DropdownMenuItem.displayName = "DropdownMenuItem";
 
-interface DropdownMenuSeparatorProps
-  extends React.HTMLAttributes<HTMLDivElement> {}
+type DropdownMenuSeparatorProps = React.HTMLAttributes<HTMLDivElement>;
 
 const DropdownMenuSeparator = React.forwardRef<
   HTMLDivElement,

@@ -11,6 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { ChartRecord, ChartPrimitive } from '@/types';
 
 export interface LineConfig {
   key: string;
@@ -20,7 +21,7 @@ export interface LineConfig {
 }
 
 export interface LineChartProps {
-  data: any[];
+  data: ChartRecord[];
   xKey: string;
   lines: LineConfig[];
   height?: number;
@@ -49,7 +50,9 @@ export const LineChartComponent: React.FC<LineChartProps> = ({
         <XAxis dataKey={xKey} stroke="#666" />
         <YAxis tickFormatter={formatYAxisTick} stroke="#666" />
         <Tooltip
-          formatter={(value: any) => formatY ? formatY(value) : value}
+          formatter={(value: ChartPrimitive) =>
+            typeof value === 'number' && formatY ? formatY(value) : value ?? ''
+          }
           contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px' }}
         />
         {showLegend && <Legend />}

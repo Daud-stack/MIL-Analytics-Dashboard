@@ -6,7 +6,7 @@ import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { useDashboard, useMonthLabels } from '@/store';
+import { useDashboard } from '@/store';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -42,7 +42,7 @@ const linearForecast = (data: number[], forecastMonths: number = 6): { value: nu
 };
 
 // Build forecast data for charts
-const buildForecastData = (monthlyData: number[] | undefined, type: string) => {
+const buildForecastData = (monthlyData: number[] | undefined) => {
   if (!monthlyData || monthlyData.length === 0) return [];
 
   const historicalData = monthlyData.map((value, i) => ({
@@ -65,14 +65,14 @@ const buildForecastData = (monthlyData: number[] | undefined, type: string) => {
   return [...historicalData, ...forecastData];
 };
 
-const KPICard = ({ title, value }: any) => (
+const KPICard = ({ title, value }: { title: string; value: string }) => (
   <div className="rounded-lg border bg-white p-6 shadow-sm">
     <p className="text-sm font-medium text-slate-600">{title}</p>
     <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
   </div>
 );
 
-const ChartCard = ({ title, subtitle, children }: any) => (
+const ChartCard = ({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) => (
   <div className="rounded-lg border bg-white p-6 shadow-sm">
     <div className="mb-6">
       <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
@@ -91,9 +91,9 @@ export default function ForecastPage() {
     if (!dashboard) return null;
 
     return {
-      Revenue: buildForecastData(dashboard.monthRevenue, 'Revenue'),
-      Admissions: buildForecastData(dashboard.monthEpisodes, 'Admissions'),
-      Occupancy: buildForecastData(dashboard.occupancyBeds, 'Occupancy'),
+      Revenue: buildForecastData(dashboard.monthRevenue),
+      Admissions: buildForecastData(dashboard.monthEpisodes),
+      Occupancy: buildForecastData(dashboard.occupancyBeds),
     };
   }, [dashboard]);
 
@@ -128,8 +128,8 @@ export default function ForecastPage() {
 
   // Calculate trend metrics
   const historicalValues = currentData
-    .filter((d: any) => d.historical !== undefined)
-    .map((d: any) => d.historical);
+    .map((d) => d.historical)
+    .filter((value): value is number => typeof value === 'number');
 
   const rmse = historicalValues.length > 0
     ? Math.sqrt(historicalValues.reduce((sum: number, val: number) => sum + Math.pow(val * 0.05, 2), 0) / historicalValues.length)
@@ -197,7 +197,7 @@ export default function ForecastPage() {
               }}
             />
             <Tooltip
-              formatter={(value: any) => formatValue(value)}
+              formatter={(value: number | string) => formatValue(Number(value))}
               labelFormatter={(label) => `Month: ${label}`}
             />
             <Legend />

@@ -212,7 +212,7 @@ export default function SearchPage() {
           {searchQuery && !hasResults && (
             <div className="rounded-xl border border-gray-200 bg-white p-6 text-center">
               <Database className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-600">No results found for "{searchQuery}"</p>
+              <p className="text-gray-600">No results found for &quot;{searchQuery}&quot;</p>
               <p className="text-sm text-gray-500 mt-2">Try searching with different keywords</p>
             </div>
           )}

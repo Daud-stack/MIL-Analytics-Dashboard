@@ -518,7 +518,6 @@ export function holtWinters(
     const prevTrend = trend[t - 1];
     const prevSeasonal = seasonalComp[t % period];
 
-    let obs = arr[t];
     if (seasonal === 'additive') {
       level[t] = alpha * (arr[t] - seasonalComp[t % period]) + (1 - alpha) * (prevLevel + prevTrend);
     } else {
@@ -1156,7 +1155,7 @@ export function kmeans(X: number[][], k: number, maxIterations: number = 100): K
       return [...X[idx]];
     });
 
-  let labels = Array(n).fill(0);
+  const labels = Array(n).fill(0);
   let inertia = 0;
   let iteration = 0;
 

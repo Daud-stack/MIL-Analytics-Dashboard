@@ -29,23 +29,20 @@ interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
 const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
   ({ className, defaultValue, value, onValueChange, children, ...props }, ref) => {
     const [activeTab, setActiveTabState] = React.useState(defaultValue);
-    const activeTabRef = React.useRef(value ?? activeTab);
 
     React.useEffect(() => {
       if (value !== undefined) {
-        activeTabRef.current = value;
         setActiveTabState(value);
       }
     }, [value]);
 
     const setActiveTab = (newValue: string) => {
-      activeTabRef.current = newValue;
       setActiveTabState(newValue);
       onValueChange?.(newValue);
     };
 
     return (
-      <TabsContext.Provider value={{ activeTab: activeTabRef.current, setActiveTab }}>
+      <TabsContext.Provider value={{ activeTab, setActiveTab }}>
         <div ref={ref} className={cn("w-full", className)} {...props}>
           {children}
         </div>
@@ -55,7 +52,7 @@ const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
 );
 Tabs.displayName = "Tabs";
 
-interface TabsListProps extends React.HTMLAttributes<HTMLDivElement> {}
+type TabsListProps = React.HTMLAttributes<HTMLDivElement>;
 
 const TabsList = React.forwardRef<HTMLDivElement, TabsListProps>(
   ({ className, ...props }, ref) => (
