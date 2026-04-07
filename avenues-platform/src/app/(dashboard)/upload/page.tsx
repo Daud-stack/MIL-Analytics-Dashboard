@@ -303,35 +303,54 @@ export default function UploadPage() {
     setUploads(prev => prev.filter(u => u.id !== id));
   };
 
-  const handleProcessUploads = () => {
+  const handleProcessUploads = async () => {
     const completed = uploads.filter(u => u.status === 'complete' && u.parsedData);
     if (completed.length === 0) return;
 
     setProcessing(true);
     console.log(`[Upload] Committing ${completed.length} files to store`);
 
-    // Sort: Dashboard files first, then Location, then Claims
-    // This ensures dashboard data is set before location/claims merge in
-    const sorted = [...completed].sort((a, b) => {
-      const order = { Dashboard: 0, Location: 1, Claims: 2, Unknown: 3 };
-      return (order[a.type] || 3) - (order[b.type] || 3);
-    });
+    try {
+      // Sort: Dashboard files first, then Location, then Claims
+      // This ensures dashboard data is set before location/claims merge in
+      const sorted = [...completed].sort((a, b) => {
+        const order = { Dashboard: 0, Location: 1, Claims: 2, Unknown: 3 };
+        return (order[a.type] || 3) - (order[b.type] || 3);
+      });
 
-    sorted.forEach(upload => {
-      if (upload.parsedData) {
-        console.log(`[Upload] Adding ${upload.type} data for year ${upload.year}:`, {
-          hasDashboard: !!upload.parsedData.dashboard,
-          hasLocation: !!upload.parsedData.location,
-          hasClaims: !!upload.parsedData.claims,
-          revenue: upload.parsedData.dashboard?.totalRevenue,
-        });
-        addYearData(upload.year, upload.parsedData);
-      }
-    });
+      sorted.forEach(upload => {
+        if (upload.parsedData) {
+          // Strip rawRows before committing to store to avoid memory/localStorage issues
+          const dataToStore = { ...upload.parsedData };
+          if (dataToStore.location) {
+            dataToStore.location = { ...dataToStore.location, rawRows: [] };
+          }
+          if (dataToStore.loc) {
+            dataToStore.loc = { ...dataToStore.loc, rawRows: [] };
+          }
+          console.log(`[Upload] Adding ${upload.type} data for year ${upload.year}:`, {
+            hasDashboard: !!dataToStore.dashboard,
+            hasLocation: !!dataToStore.location,
+            hasClaims: !!dataToStore.claims,
+            revenue: dataToStore.dashboard?.totalRevenue,
+            episodes: dataToStore.location?.episodes,
+            doctors: dataToStore.location?.doctors?.length,
+          });
+          addYearData(upload.year, dataToStore);
+        }
+      });
 
-    setUploads([]);
-    setProcessing(false);
-    router.push('/dashboard');
+      setUploads([]);
+      setProcessing(false);
+
+      // Use setTimeout to ensure state updates are flushed before navigation
+      setTimeout(() => {
+        router.push('/dashboard');
+      }, 100);
+    } catch (error) {
+      console.error('[Upload] Error processing files:', error);
+      setProcessing(false);
+    }
   };
 
   const completedCount = uploads.filter(u => u.status === 'complete').length;

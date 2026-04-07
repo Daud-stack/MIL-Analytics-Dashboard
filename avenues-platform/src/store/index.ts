@@ -252,8 +252,9 @@ export const useStore = create<StoreState>()(
           }
         },
       },
-      // Only persist essential keys
+      // Persist essential keys including years data
       partialize: (state) => ({
+        years: state.years,
         currentYear: state.currentYear,
         currentMonth: state.currentMonth,
         compareYears: state.compareYears,
