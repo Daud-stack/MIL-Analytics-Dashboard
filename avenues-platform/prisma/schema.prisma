@@ -1,0 +1,139 @@
+// Avenues Clinic Intelligence Platform
+// Prisma schema — SQLite (dev), swap to PostgreSQL for production
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String                @id @default(cuid())
+  email             String                @unique
+  name              String?
+  password          String?
+  role              String                @default("VIEWER") // ADMIN | ANALYST | VIEWER
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  userOrganizations UserOrganization[]
+  uploads           DataUpload[]
+
+  @@map("users")
+}
+
+model Organization {
+  id                String                @id @default(cuid())
+  name              String
+  slug              String                @unique
+  createdAt         DateTime              @default(now())
+
+  users             UserOrganization[]
+  dashboardData     DashboardData[]
+  doctorData        DoctorData[]
+  claimsData        ClaimsData[]
+  uploads           DataUpload[]
+
+  @@map("organizations")
+}
+
+model UserOrganization {
+  id                String                @id @default(cuid())
+  userId            String
+  orgId             String
+  role              String                @default("member")
+
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@map("user_organizations")
+}
+
+model DataUpload {
+  id                String                @id @default(cuid())
+  fileName          String
+  fileType          String                // DASHBOARD | LOCATION | CLAIMS
+  year              Int
+  month             Int?
+  status            String                @default("PROCESSING") // PROCESSING | COMPLETE | ERROR
+  uploadedBy        String
+  orgId             String
+  createdAt         DateTime              @default(now())
+
+  user              User                  @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([uploadedBy])
+  @@map("data_uploads")
+}
+
+model DashboardData {
+  id                String                @id @default(cuid())
+  year              Int
+  month             Int
+  orgId             String
+  totalRevenue      Float
+  monthRevenue      String                // JSON array of 12 months
+  monthEpisodes     String                // JSON array of 12 months
+  admCasualty       String                // JSON array of 12 months
+  admDay            String                // JSON array of 12 months
+  admInpatient      String                // JSON array of 12 months
+  theatreCases      String                // JSON array of 12 months
+  theatreUtil       String                // JSON array of 12 months
+  theatrePctOcc     String                // JSON array of 12 months
+  pharmacyRx        String                // JSON array of 12 months
+  pharmacyRev       String                // JSON array of 12 months
+  occupancyBeds     String                // JSON array of 12 months
+  patientDays       String                // JSON object with location keys
+  createdAt         DateTime              @default(now())
+
+  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([year, month, orgId])
+  @@index([orgId])
+  @@map("dashboard_data")
+}
+
+model DoctorData {
+  id                String                @id @default(cuid())
+  year              Int
+  orgId             String
+  name              String
+  specialty         String
+  episodes          Int
+  revenue           Float
+  avgLOS            Float
+  patients          Int
+
+  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("doctor_data")
+}
+
+model ClaimsData {
+  id                String                @id @default(cuid())
+  year              Int
+  month             Int
+  orgId             String
+  totalClaims       Int
+  totalClaimed      Float
+  submitted         Int
+  received          Int
+  rejected          Int
+  approved          Int
+  pending           Int
+  scheme            String
+  status            String                @default("PENDING") // PENDING | APPROVED | REJECTED | RECEIVED
+  createdAt         DateTime              @default(now())
+
+  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("claims_data")
+}

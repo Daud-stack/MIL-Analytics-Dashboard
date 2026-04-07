@@ -1,0 +1,81 @@
+version: "3.8"
+
+services:
+  # ===========================================
+  # Avenues Platform - Production
+  # ===========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: avenues-platform
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - sqlite-data:/app/prisma/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - avenues-network
+
+  # ===========================================
+  # PostgreSQL (production database)
+  # ===========================================
+  # Uncomment when migrating from SQLite to PostgreSQL
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: avenues-postgres
+  #   restart: always
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     POSTGRES_USER: avenues
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+  #     POSTGRES_DB: avenues_analytics
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U avenues"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - avenues-network
+
+  # ===========================================
+  # Nginx Reverse Proxy (optional)
+  # ===========================================
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: avenues-nginx
+  #   restart: always
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./nginx/ssl:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     app:
+  #       condition: service_healthy
+  #   networks:
+  #     - avenues-network
+
+volumes:
+  sqlite-data:
+    driver: local
+  # postgres-data:
+  #   driver: local
+
+networks:
+  avenues-network:
+    driver: bridge

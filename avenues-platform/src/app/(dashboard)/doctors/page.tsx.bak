@@ -1,0 +1,646 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  ScatterChart,
+  Scatter,
+} from 'recharts';
+import {
+  ArrowUpDown,
+  Download,
+  Search,
+  Users,
+  TrendingUp,
+  DollarSign,
+  Activity,
+  Stethoscope,
+} from 'lucide-react';
+
+// Sample data: 20+ doctors
+const DOCTORS_DATA = [
+  {
+    id: 1,
+    name: 'Dr. Amara Okoro',
+    specialty: 'Surgery',
+    episodes: 245,
+    revenue: 1225000,
+    avgRevenuePerEpisode: 5000,
+    avgLOS: 3.2,
+    uniquePatients: 180,
+  },
+  {
+    id: 2,
+    name: 'Dr. Benjamin Mensah',
+    specialty: 'Medicine',
+    episodes: 312,
+    revenue: 936000,
+    avgRevenuePerEpisode: 3000,
+    avgLOS: 4.5,
+    uniquePatients: 280,
+  },
+  {
+    id: 3,
+    name: 'Dr. Chioma Nwosu',
+    specialty: 'Paediatrics',
+    episodes: 198,
+    revenue: 594000,
+    avgRevenuePerEpisode: 3000,
+    avgLOS: 2.8,
+    uniquePatients: 165,
+  },
+  {
+    id: 4,
+    name: 'Dr. David Okafor',
+    specialty: 'Surgery',
+    episodes: 156,
+    revenue: 890000,
+    avgRevenuePerEpisode: 5705,
+    avgLOS: 3.5,
+    uniquePatients: 120,
+  },
+  {
+    id: 5,
+    name: 'Dr. Ewa Adeyemi',
+    specialty: 'O&G',
+    episodes: 287,
+    revenue: 1148000,
+    avgRevenuePerEpisode: 4000,
+    avgLOS: 2.1,
+    uniquePatients: 215,
+  },
+  {
+    id: 6,
+    name: 'Dr. Funmi Oluwaseun',
+    specialty: 'Orthopaedics',
+    episodes: 203,
+    revenue: 812000,
+    avgRevenuePerEpisode: 4000,
+    avgLOS: 4.2,
+    uniquePatients: 145,
+  },
+  {
+    id: 7,
+    name: 'Dr. Kofi Boateng',
+    specialty: 'Medicine',
+    episodes: 276,
+    revenue: 828000,
+    avgRevenuePerEpisode: 3000,
+    avgLOS: 5.1,
+    uniquePatients: 240,
+  },
+  {
+    id: 8,
+    name: 'Dr. Linda Mensah',
+    specialty: 'Paediatrics',
+    episodes: 215,
+    revenue: 645000,
+    avgRevenuePerEpisode: 3000,
+    avgLOS: 3.0,
+    uniquePatients: 190,
+  },
+  {
+    id: 9,
+    name: 'Dr. Marcus Owusu',
+    specialty: 'Surgery',
+    episodes: 198,
+    revenue: 1089000,
+    avgRevenuePerEpisode: 5500,
+    avgLOS: 3.3,
+    uniquePatients: 152,
+  },
+  {
+    id: 10,
+    name: 'Dr. Nkechi Uche',
+    specialty: 'O&G',
+    revenue: 960000,
+    episodes: 240,
+    avgRevenuePerEpisode: 4000,
+    avgLOS: 2.0,
+    uniquePatients: 180,
+  },
+  {
+    id: 11,
+    name: 'Dr. Olumide Adebayo',
+    specialty: 'Orthopaedics',
+    episodes: 167,
+    revenue: 668000,
+    avgRevenuePerEpisode: 4000,
+    avgLOS: 4.8,
+    uniquePatients: 128,
+  },
+  {
+    id: 12,
+    name: 'Dr. Patricia Kwame',
+    specialty: 'Medicine',
+    episodes: 289,
+    revenue: 867000,
+    avgRevenuePerEpisode: 3000,
+    avgLOS: 4.8,
+    uniquePatients: 265,
+  },
+  {
+    id: 13,
+    name: 'Dr. Rashid Al-Harbi',
+    specialty: 'Surgery',
+    episodes: 221,
+    revenue: 1157000,
+    avgRevenuePerEpisode: 5230,
+    avgLOS: 3.1,
+    uniquePatients: 168,
+  },
+  {
+    id: 14,
+    name: 'Dr. Stella Nwankwo',
+    specialty: 'Paediatrics',
+    episodes: 243,
+    revenue: 729000,
+    avgRevenuePerEpisode: 3000,
+    avgLOS: 2.9,
+    uniquePatients: 220,
+  },
+  {
+    id: 15,
+    name: 'Dr. Tunde Adeyinka',
+    specialty: 'Medicine',
+    episodes: 198,
+    revenue: 594000,
+    avgRevenuePerEpisode: 3000,
+    avgLOS: 5.3,
+    uniquePatients: 178,
+  },
+  {
+    id: 16,
+    name: 'Dr. Uchenna Okonkwo',
+    specialty: 'Surgery',
+    episodes: 212,
+    revenue: 1060000,
+    avgRevenuePerEpisode: 5000,
+    avgLOS: 3.0,
+    uniquePatients: 156,
+  },
+  {
+    id: 17,
+    name: 'Dr. Victoria Asibey',
+    specialty: 'O&G',
+    episodes: 256,
+    revenue: 1024000,
+    avgRevenuePerEpisode: 4000,
+    avgLOS: 2.2,
+    uniquePatients: 192,
+  },
+  {
+    id: 18,
+    name: 'Dr. Wasiu Oladipo',
+    specialty: 'Orthopaedics',
+    episodes: 189,
+    revenue: 756000,
+    avgRevenuePerEpisode: 4000,
+    avgLOS: 4.6,
+    uniquePatients: 142,
+  },
+  {
+    id: 19,
+    name: 'Dr. Yetunde Adebowale',
+    specialty: 'Paediatrics',
+    episodes: 267,
+    revenue: 801000,
+    avgRevenuePerEpisode: 3000,
+    avgLOS: 2.7,
+    uniquePatients: 240,
+  },
+  {
+    id: 20,
+    name: 'Dr. Zainab Hassan',
+    specialty: 'Medicine',
+    episodes: 234,
+    revenue: 702000,
+    avgRevenuePerEpisode: 3000,
+    avgLOS: 5.0,
+    uniquePatients: 210,
+  },
+];
+
+const SPECIALTY_COLORS = {
+  Surgery: '#ef4444',
+  Medicine: '#3b82f6',
+  Paediatrics: '#10b981',
+  'O&G': '#f59e0b',
+  Orthopaedics: '#8b5cf6',
+  'ENT': '#ec4899',
+  'Psychiatry': '#06b6d4',
+};
+
+type SortField = 'rank' | 'name' | 'specialty' | 'episodes' | 'revenue' | 'avgRevenuePerEpisode' | 'avgLOS' | 'uniquePatients';
+type SortOrder = 'asc' | 'desc';
+
+export default function DoctorsPage() {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<SortField>('revenue');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+
+  const filteredAndSortedDoctors = useMemo(() => {
+    let filtered = DOCTORS_DATA.filter(
+      (doctor) =>
+        doctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        doctor.specialty.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    filtered.sort((a, b) => {
+      let aVal: number | string = 0;
+      let bVal: number | string = 0;
+
+      if (sortField === 'name' || sortField === 'specialty') {
+        aVal = a[sortField];
+        bVal = b[sortField];
+      } else {
+        aVal = a[sortField as keyof typeof a] as number;
+        bVal = b[sortField as keyof typeof b] as number;
+      }
+
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+
+      return sortOrder === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+    });
+
+    return filtered.map((doc, idx) => ({ ...doc, rank: idx + 1 }));
+  }, [searchTerm, sortField, sortOrder]);
+
+  const top10DoctorsByRevenue = useMemo(
+    () =>
+      [...DOCTORS_DATA]
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10)
+        .map((doc) => ({ name: doc.name.split(' ').pop(), revenue: doc.revenue })),
+    []
+  );
+
+  const episodesBySpecialty = useMemo(() => {
+    const grouped: Record<string, number> = {};
+    DOCTORS_DATA.forEach((doctor) => {
+      grouped[doctor.specialty] = (grouped[doctor.specialty] || 0) + doctor.episodes;
+    });
+    return Object.entries(grouped).map(([specialty, episodes]) => ({
+      specialty,
+      episodes,
+    }));
+  }, []);
+
+  const revenueBySpecialty = useMemo(() => {
+    const grouped: Record<string, number> = {};
+    DOCTORS_DATA.forEach((doctor) => {
+      grouped[doctor.specialty] = (grouped[doctor.specialty] || 0) + doctor.revenue;
+    });
+    return Object.entries(grouped).map(([specialty, revenue]) => ({
+      specialty,
+      revenue,
+    }));
+  }, []);
+
+  const efficiencyData = useMemo(
+    () =>
+      DOCTORS_DATA.map((doc) => ({
+        name: doc.name.split(' ').pop(),
+        episodes: doc.episodes,
+        revenue: doc.revenue,
+      })),
+    []
+  );
+
+  const specialtyDistribution = useMemo(() => {
+    const grouped: Record<string, number> = {};
+    DOCTORS_DATA.forEach((doctor) => {
+      grouped[doctor.specialty] = (grouped[doctor.specialty] || 0) + 1;
+    });
+    return Object.entries(grouped).map(([specialty, count]) => ({
+      name: specialty,
+      value: count,
+    }));
+  }, []);
+
+  const monthlyTrends = useMemo(
+    () => [
+      { month: 'Jan', episodes: 120, revenue: 450000, doctors: 18 },
+      { month: 'Feb', episodes: 135, revenue: 495000, doctors: 19 },
+      { month: 'Mar', episodes: 145, revenue: 520000, doctors: 20 },
+      { month: 'Apr', episodes: 155, revenue: 560000, doctors: 20 },
+      { month: 'May', episodes: 168, revenue: 610000, doctors: 20 },
+      { month: 'Jun', episodes: 182, revenue: 670000, doctors: 21 },
+    ],
+    []
+  );
+
+  const kpis = useMemo(
+    () => ({
+      totalDoctors: DOCTORS_DATA.length,
+      avgEpisodesPerDoctor: Math.round(DOCTORS_DATA.reduce((sum, d) => sum + d.episodes, 0) / DOCTORS_DATA.length),
+      avgRevenuePerDoctor: Math.round(DOCTORS_DATA.reduce((sum, d) => sum + d.revenue, 0) / DOCTORS_DATA.length),
+      topSpecialty: episodesBySpecialty.sort((a, b) => b.episodes - a.episodes)[0]?.specialty || 'N/A',
+    }),
+    [episodesBySpecialty]
+  );
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+  };
+
+  const exportData = () => {
+    const csv =
+      'Rank,Name,Specialty,Episodes,Revenue,Avg Revenue/Episode,Avg LOS,Unique Patients\n' +
+      filteredAndSortedDoctors
+        .map(
+          (doc) =>
+            `${doc.rank},${doc.name},${doc.specialty},${doc.episodes},${doc.revenue},${doc.avgRevenuePerEpisode.toFixed(2)},${doc.avgLOS.toFixed(1)},${doc.uniquePatients}`
+        )
+        .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'doctor-analytics.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="w-4 h-4 text-gray-400" />;
+    return <ArrowUpDown className={`w-4 h-4 ${sortOrder === 'asc' ? 'text-blue-500' : 'text-blue-700'}`} />;
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Stethoscope className="w-8 h-8 text-blue-600" />
+          <h1 className="text-3xl font-bold text-gray-900">Doctor Analytics</h1>
+        </div>
+        <button
+          onClick={exportData}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+        >
+          <Download className="w-4 h-4" />
+          Export CSV
+        </button>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 text-sm font-medium">Total Doctors</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">{kpis.totalDoctors}</p>
+            </div>
+            <Users className="w-12 h-12 text-blue-100" />
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 text-sm font-medium">Avg Episodes/Doctor</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">{kpis.avgEpisodesPerDoctor}</p>
+            </div>
+            <Activity className="w-12 h-12 text-green-100" />
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 text-sm font-medium">Avg Revenue/Doctor</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">
+                GH{(kpis.avgRevenuePerDoctor / 1000).toFixed(0)}K
+              </p>
+            </div>
+            <DollarSign className="w-12 h-12 text-orange-100" />
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 text-sm font-medium">Top Specialty</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2 truncate">{kpis.topSpecialty}</p>
+            </div>
+            <TrendingUp className="w-12 h-12 text-purple-100" />
+          </div>
+        </div>
+      </div>
+
+      {/* Charts Row 1 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Top 10 Doctors by Revenue */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Top 10 Doctors by Revenue</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={top10DoctorsByRevenue} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis type="number" />
+              <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 12 }} />
+              <Tooltip
+                formatter={(value) => `GH${(value as number / 1000).toFixed(0)}K`}
+                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb' }}
+              />
+              <Bar dataKey="revenue" fill="#3b82f6" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Episodes by Specialty */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Episodes by Specialty</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={episodesBySpecialty}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="specialty" />
+              <YAxis />
+              <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb' }} />
+              <Bar dataKey="episodes" fill="#10b981" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Charts Row 2 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Revenue by Specialty */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Revenue by Specialty</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={revenueBySpecialty}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="specialty" />
+              <YAxis />
+              <Tooltip
+                formatter={(value) => `GH${(value as number / 1000).toFixed(0)}K`}
+                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb' }}
+              />
+              <Bar dataKey="revenue" fill="#f59e0b" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Specialty Distribution Pie */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Specialty Distribution</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie data={specialtyDistribution} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name} (${value})`} outerRadius={80} fill="#8884d8" dataKey="value">
+                {specialtyDistribution.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={Object.values(SPECIALTY_COLORS)[index % Object.keys(SPECIALTY_COLORS).length]} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb' }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Charts Row 3 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Doctor Efficiency Scatter */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Doctor Efficiency (Episodes vs Revenue)</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="episodes" name="Episodes" />
+              <YAxis dataKey="revenue" name="Revenue" />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb' }} formatter={(value) => (typeof value === 'number' && value > 100 ? `GH${(value / 1000).toFixed(0)}K` : value)} />
+              <Scatter name="Doctor" data={efficiencyData} fill="#8b5cf6" />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Doctor Trends Over Months */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Doctor Trends (6 Months)</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={monthlyTrends}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="month" />
+              <YAxis yAxisId="left" />
+              <YAxis yAxisId="right" orientation="right" />
+              <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb' }} />
+              <Legend />
+              <Line yAxisId="left" type="monotone" dataKey="episodes" stroke="#3b82f6" name="Episodes" />
+              <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#f59e0b" name="Revenue (GH)" formatter={(value) => `GH${(value as number / 1000).toFixed(0)}K`} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Doctor Leaderboard Table */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <Search className="w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search doctors or specialties..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1 outline-none text-gray-900 placeholder-gray-500"
+            />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3 text-left font-semibold text-gray-900 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('rank')}>
+                  <div className="flex items-center gap-2">
+                    Rank
+                    <SortIcon field="rank" />
+                  </div>
+                </th>
+                <th className="px-6 py-3 text-left font-semibold text-gray-900 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('name')}>
+                  <div className="flex items-center gap-2">
+                    Name
+                    <SortIcon field="name" />
+                  </div>
+                </th>
+                <th className="px-6 py-3 text-left font-semibold text-gray-900 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('specialty')}>
+                  <div className="flex items-center gap-2">
+                    Specialty
+                    <SortIcon field="specialty" />
+                  </div>
+                </th>
+                <th className="px-6 py-3 text-right font-semibold text-gray-900 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('episodes')}>
+                  <div className="flex items-center justify-end gap-2">
+                    Episodes
+                    <SortIcon field="episodes" />
+                  </div>
+                </th>
+                <th className="px-6 py-3 text-right font-semibold text-gray-900 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('revenue')}>
+                  <div className="flex items-center justify-end gap-2">
+                    Revenue
+                    <SortIcon field="revenue" />
+                  </div>
+                </th>
+                <th className="px-6 py-3 text-right font-semibold text-gray-900 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('avgRevenuePerEpisode')}>
+                  <div className="flex items-center justify-end gap-2">
+                    Avg/Episode
+                    <SortIcon field="avgRevenuePerEpisode" />
+                  </div>
+                </th>
+                <th className="px-6 py-3 text-right font-semibold text-gray-900 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('avgLOS')}>
+                  <div className="flex items-center justify-end gap-2">
+                    Avg LOS
+                    <SortIcon field="avgLOS" />
+                  </div>
+                </th>
+                <th className="px-6 py-3 text-right font-semibold text-gray-900 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('uniquePatients')}>
+                  <div className="flex items-center justify-end gap-2">
+                    Patients
+                    <SortIcon field="uniquePatients" />
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAndSortedDoctors.map((doctor, idx) => (
+                <tr key={doctor.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-6 py-4 text-gray-900 font-semibold">{doctor.rank}</td>
+                  <td className="px-6 py-4 text-gray-900 font-medium">{doctor.name}</td>
+                  <td className="px-6 py-4 text-gray-600">
+                    <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-medium">{doctor.specialty}</span>
+                  </td>
+                  <td className="px-6 py-4 text-right text-gray-900">{doctor.episodes}</td>
+                  <td className="px-6 py-4 text-right text-gray-900 font-medium">GH{(doctor.revenue / 1000).toFixed(0)}K</td>
+                  <td className="px-6 py-4 text-right text-gray-900">GH{doctor.avgRevenuePerEpisode.toFixed(0)}</td>
+                  <td className="px-6 py-4 text-right text-gray-900">{doctor.avgLOS.toFixed(1)} days</td>
+                  <td className="px-6 py-4 text-right text-gray-900">{doctor.uniquePatients}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="px-6 py-4 bg-gray-50 text-sm text-gray-600 border-t border-gray-200">
+          Showing {filteredAndSortedDoctors.length} of {DOCTORS_DATA.length} doctors
+        </div>
+      </div>
+    </div>
+  );
+}

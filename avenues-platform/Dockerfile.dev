@@ -1,0 +1,23 @@
+# ============================================
+# Development Dockerfile
+# Hot-reload with volume mounts
+# ============================================
+
+FROM node:20-alpine
+
+RUN apk add --no-cache libc6-compat openssl
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
+
+RUN npm ci --legacy-peer-deps
+RUN npx prisma generate
+
+EXPOSE 3000
+
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm run dev"]

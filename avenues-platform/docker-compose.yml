@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  # ===========================================
+  # Avenues Platform - Development
+  # ===========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: avenues-platform-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+      - sqlite-data:/app/prisma/data
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=file:/app/prisma/data/dev.db
+    networks:
+      - avenues-network
+
+  # ===========================================
+  # Adminer - Database GUI (optional)
+  # ===========================================
+  # Uncomment below if you switch to PostgreSQL
+  # adminer:
+  #   image: adminer
+  #   container_name: avenues-adminer
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8080:8080"
+  #   networks:
+  #     - avenues-network
+
+volumes:
+  sqlite-data:
+    driver: local
+
+networks:
+  avenues-network:
+    driver: bridge

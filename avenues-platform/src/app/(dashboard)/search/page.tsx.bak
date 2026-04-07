@@ -1,0 +1,500 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import {
+  Search as SearchIcon,
+  Clock,
+  TrendingUp,
+  Users,
+  Pill,
+  Building2,
+  Plus,
+  X,
+  Stethoscope,
+  Activity,
+  MapPin,
+  Heart,
+} from 'lucide-react';
+
+// Sample searchable data
+const DOCTORS_DATA = [
+  { id: 1, name: 'Dr. Amara Okoro', specialty: 'Surgery', type: 'doctor', code: 'DOC001' },
+  { id: 2, name: 'Dr. Benjamin Mensah', specialty: 'Medicine', type: 'doctor', code: 'DOC002' },
+  { id: 3, name: 'Dr. Chioma Nwosu', specialty: 'Paediatrics', type: 'doctor', code: 'DOC003' },
+  { id: 4, name: 'Dr. David Okafor', specialty: 'Surgery', type: 'doctor', code: 'DOC004' },
+  { id: 5, name: 'Dr. Ewa Adeyemi', specialty: 'O&G', type: 'doctor', code: 'DOC005' },
+];
+
+const DIAGNOSES_DATA = [
+  { id: 1, name: 'Hypertension', code: 'I10', type: 'diagnosis', year: 2024 },
+  { id: 2, name: 'Type 2 Diabetes Mellitus', code: 'E11', type: 'diagnosis', year: 2024 },
+  { id: 3, name: 'Pneumonia', code: 'J18.9', type: 'diagnosis', year: 2024 },
+  { id: 4, name: 'Acute Appendicitis', code: 'K35.9', type: 'diagnosis', year: 2024 },
+  { id: 5, name: 'Migraine', code: 'G43.9', type: 'diagnosis', year: 2024 },
+  { id: 6, name: 'Gastric Ulcer', code: 'K25.9', type: 'diagnosis', year: 2024 },
+];
+
+const SPECIALTIES_DATA = [
+  { id: 1, name: 'Surgery', count: 8, type: 'specialty' },
+  { id: 2, name: 'Medicine', count: 12, type: 'specialty' },
+  { id: 3, name: 'Paediatrics', count: 6, type: 'specialty' },
+  { id: 4, name: 'O&G', count: 7, type: 'specialty' },
+  { id: 5, name: 'Orthopaedics', count: 5, type: 'specialty' },
+  { id: 6, name: 'Psychiatry', count: 4, type: 'specialty' },
+];
+
+const WARDS_DATA = [
+  { id: 1, name: 'Ward A (General Surgery)', capacity: 20, type: 'ward', beds: 15 },
+  { id: 2, name: 'Ward B (Medicine)', capacity: 25, type: 'ward', beds: 22 },
+  { id: 3, name: 'Ward C (Paediatrics)', capacity: 15, type: 'ward', beds: 12 },
+  { id: 4, name: 'Ward D (O&G)', capacity: 20, type: 'ward', beds: 18 },
+  { id: 5, name: 'ICU', capacity: 10, type: 'ward', beds: 8 },
+  { id: 6, name: 'HDU', capacity: 8, type: 'ward', beds: 6 },
+];
+
+const MEDICAL_AIDS_DATA = [
+  { id: 1, name: 'NHIS', code: 'AID001', type: 'aid', members: 45000 },
+  { id: 2, name: 'Vanguard Health Scheme', code: 'AID002', type: 'aid', members: 12000 },
+  { id: 3, name: 'HAM-CARE', code: 'AID003', type: 'aid', members: 8500 },
+  { id: 4, name: 'ArLA Medical', code: 'AID004', type: 'aid', members: 5200 },
+  { id: 5, name: 'Metropolitan Insurance', code: 'AID005', type: 'aid', members: 3800 },
+];
+
+const ALL_SEARCHABLE = [
+  ...DOCTORS_DATA,
+  ...DIAGNOSES_DATA,
+  ...SPECIALTIES_DATA,
+  ...WARDS_DATA,
+  ...MEDICAL_AIDS_DATA,
+];
+
+const RECENT_SEARCHES_DEFAULT = [
+  'Hypertension',
+  'Dr. Amara Okoro',
+  'Surgery',
+  'Ward B',
+  'NHIS',
+];
+
+const QUICK_SUGGESTIONS = [
+  { text: 'All Surgeons', category: 'specialty', action: 'Surgery' },
+  { text: 'Medicine Ward', category: 'ward', action: 'Ward B' },
+  { text: 'Top Diagnoses', category: 'diagnosis', action: 'Hypertension' },
+  { text: 'NHIS Members', category: 'aid', action: 'NHIS' },
+];
+
+type FilterType = 'all' | 'doctor' | 'diagnosis' | 'specialty' | 'ward' | 'aid';
+
+const getTypeIcon = (type: string) => {
+  switch (type) {
+    case 'doctor':
+      return <Stethoscope className="w-5 h-5" />;
+    case 'diagnosis':
+      return <Heart className="w-5 h-5" />;
+    case 'specialty':
+      return <Activity className="w-5 h-5" />;
+    case 'ward':
+      return <Building2 className="w-5 h-5" />;
+    case 'aid':
+      return <Pill className="w-5 h-5" />;
+    default:
+      return <SearchIcon className="w-5 h-5" />;
+  }
+};
+
+const getTypeColor = (type: string) => {
+  switch (type) {
+    case 'doctor':
+      return 'bg-blue-50 text-blue-700 border-blue-200';
+    case 'diagnosis':
+      return 'bg-red-50 text-red-700 border-red-200';
+    case 'specialty':
+      return 'bg-purple-50 text-purple-700 border-purple-200';
+    case 'ward':
+      return 'bg-orange-50 text-orange-700 border-orange-200';
+    case 'aid':
+      return 'bg-green-50 text-green-700 border-green-200';
+    default:
+      return 'bg-gray-50 text-gray-700 border-gray-200';
+  }
+};
+
+const getTypeLabel = (type: string) => {
+  switch (type) {
+    case 'doctor':
+      return 'Doctor';
+    case 'diagnosis':
+      return 'Diagnosis';
+    case 'specialty':
+      return 'Specialty';
+    case 'ward':
+      return 'Ward';
+    case 'aid':
+      return 'Medical Aid';
+    default:
+      return 'Item';
+  }
+};
+
+export default function SearchPage() {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [yearFilter, setYearFilter] = useState(2024);
+  const [recentSearches, setRecentSearches] = useState<string[]>(RECENT_SEARCHES_DEFAULT);
+
+  const filteredResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+
+    const query = searchQuery.toLowerCase();
+    let results = ALL_SEARCHABLE.filter(
+      (item) =>
+        ('name' in item && (item as any).name.toLowerCase().includes(query)) ||
+        ('code' in item && (item as any).code.toLowerCase().includes(query)) ||
+        ('specialty' in item && (item as any).specialty.toLowerCase().includes(query))
+    );
+
+    if (activeFilter !== 'all') {
+      results = results.filter((item) => item.type === activeFilter);
+    }
+
+    return results;
+  }, [searchQuery, activeFilter]);
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim() && !recentSearches.includes(query)) {
+      setRecentSearches([query, ...recentSearches.slice(0, 4)]);
+    }
+  };
+
+  const handleRemoveRecent = (search: string) => {
+    setRecentSearches(recentSearches.filter((s) => s !== search));
+  };
+
+  const renderDetails = (item: any) => {
+    switch (item.type) {
+      case 'doctor':
+        return (
+          <div className="text-sm">
+            <p className="text-gray-600">Specialty: <span className="font-medium text-gray-900">{item.specialty}</span></p>
+            <p className="text-gray-500 text-xs mt-1">ID: {item.code}</p>
+          </div>
+        );
+      case 'diagnosis':
+        return (
+          <div className="text-sm">
+            <p className="text-gray-600">Code: <span className="font-medium text-gray-900">{item.code}</span></p>
+            <p className="text-gray-500 text-xs mt-1">Year: {item.year}</p>
+          </div>
+        );
+      case 'specialty':
+        return (
+          <div className="text-sm">
+            <p className="text-gray-600">Doctors: <span className="font-medium text-gray-900">{item.count}</span></p>
+          </div>
+        );
+      case 'ward':
+        return (
+          <div className="text-sm">
+            <p className="text-gray-600">Beds Available: <span className="font-medium text-gray-900">{item.beds}/{item.capacity}</span></p>
+          </div>
+        );
+      case 'aid':
+        return (
+          <div className="text-sm">
+            <p className="text-gray-600">Members: <span className="font-medium text-gray-900">{(item.members / 1000).toFixed(1)}K</span></p>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-8">
+        <SearchIcon className="w-8 h-8 text-blue-600" />
+        <h1 className="text-3xl font-bold text-gray-900">Global Search</h1>
+      </div>
+
+      {/* Main Search Input */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="relative mb-4">
+          <SearchIcon className="absolute left-4 top-3 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search doctors, diagnoses, specialties, wards, medical aids..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+            autoFocus
+          />
+        </div>
+
+        {/* Filter Chips */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => setActiveFilter('all')}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+              activeFilter === 'all'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setActiveFilter('doctor')}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-2 ${
+              activeFilter === 'doctor'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Stethoscope className="w-4 h-4" />
+            Doctors
+          </button>
+          <button
+            onClick={() => setActiveFilter('diagnosis')}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-2 ${
+              activeFilter === 'diagnosis'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Heart className="w-4 h-4" />
+            Diagnoses
+          </button>
+          <button
+            onClick={() => setActiveFilter('specialty')}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-2 ${
+              activeFilter === 'specialty'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            Specialties
+          </button>
+          <button
+            onClick={() => setActiveFilter('ward')}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-2 ${
+              activeFilter === 'ward'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            Wards
+          </button>
+          <button
+            onClick={() => setActiveFilter('aid')}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition flex items-center gap-2 ${
+              activeFilter === 'aid'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Pill className="w-4 h-4" />
+            Medical Aids
+          </button>
+        </div>
+
+        {/* Year Filter */}
+        <div className="flex items-center gap-2">
+          <label htmlFor="yearFilter" className="text-sm font-medium text-gray-700">
+            Year:
+          </label>
+          <select
+            id="yearFilter"
+            value={yearFilter}
+            onChange={(e) => setYearFilter(Number(e.target.value))}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+          >
+            <option value={2022}>2022</option>
+            <option value={2023}>2023</option>
+            <option value={2024}>2024</option>
+            <option value={2025}>2025</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Search Results or Empty State */}
+      {searchQuery.trim() ? (
+        <div className="space-y-4">
+          <div className="text-sm text-gray-600">
+            Found <span className="font-semibold text-gray-900">{filteredResults.length}</span> result{filteredResults.length !== 1 ? 's' : ''}
+          </div>
+
+          {filteredResults.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredResults.map((result) => (
+                <a
+                  key={`${result.type}-${result.id}`}
+                  href="#"
+                  className={`border rounded-lg p-4 transition hover:shadow-md ${getTypeColor(result.type)}`}
+                  onClick={(e) => e.preventDefault()}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 mt-1">
+                      {getTypeIcon(result.type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h3 className="font-semibold text-gray-900 truncate">
+                            {'name' in result ? (result as any).name : result.id}
+                          </h3>
+                          <span className="text-xs font-medium opacity-75 mt-1 inline-block">
+                            {getTypeLabel(result.type)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        {renderDetails(result)}
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-gray-50 rounded-lg p-12 text-center border border-gray-200">
+              <SearchIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No results found</h3>
+              <p className="text-gray-600 max-w-md mx-auto">
+                Try adjusting your search terms or filters. Make sure the spelling is correct.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Quick Suggestions */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Quick Suggestions
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {QUICK_SUGGESTIONS.map((suggestion) => (
+                <button
+                  key={suggestion.action}
+                  onClick={() => handleSearch(suggestion.action)}
+                  className="text-left p-4 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition"
+                >
+                  <div className="flex items-center gap-2">
+                    {getTypeIcon(suggestion.category)}
+                    <span className="font-medium text-gray-900">{suggestion.text}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Recent Searches */}
+          {recentSearches.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                Recent Searches
+              </h2>
+              <div className="space-y-2">
+                {recentSearches.map((search) => (
+                  <div
+                    key={search}
+                    className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition group"
+                  >
+                    <button
+                      onClick={() => handleSearch(search)}
+                      className="flex items-center gap-2 text-left flex-1 text-gray-700 hover:text-blue-600 transition"
+                    >
+                      <Clock className="w-4 h-4 text-gray-400" />
+                      <span className="font-medium">{search}</span>
+                    </button>
+                    <button
+                      onClick={() => handleRemoveRecent(search)}
+                      className="opacity-0 group-hover:opacity-100 transition p-1 hover:bg-gray-200 rounded"
+                    >
+                      <X className="w-4 h-4 text-gray-400" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Help Tips */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+            <h3 className="font-semibold text-blue-900 mb-3">Search Tips</h3>
+            <ul className="space-y-2 text-sm text-blue-800">
+              <li className="flex gap-2">
+                <span className="font-semibold">•</span>
+                <span>Search by doctor name, ID, or specialty</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="font-semibold">•</span>
+                <span>Find diagnoses by disease name or ICD code</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="font-semibold">•</span>
+                <span>Browse medical aids by name or member count</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="font-semibold">•</span>
+                <span>Use filters to narrow down results by category</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="font-semibold">•</span>
+                <span>Filter results by year to find historical data</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Browse Categories */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Browse by Category</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                  <Stethoscope className="w-5 h-5" />
+                  Doctors
+                </h3>
+                <p className="text-sm text-blue-800">{DOCTORS_DATA.length} doctors available</p>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <h3 className="font-semibold text-red-900 mb-2 flex items-center gap-2">
+                  <Heart className="w-5 h-5" />
+                  Diagnoses
+                </h3>
+                <p className="text-sm text-red-800">{DIAGNOSES_DATA.length} diagnoses in database</p>
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <h3 className="font-semibold text-purple-900 mb-2 flex items-center gap-2">
+                  <Activity className="w-5 h-5" />
+                  Specialties
+                </h3>
+                <p className="text-sm text-purple-800">{SPECIALTIES_DATA.length} specialties</p>
+              </div>
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <h3 className="font-semibold text-orange-900 mb-2 flex items-center gap-2">
+                  <Building2 className="w-5 h-5" />
+                  Wards
+                </h3>
+                <p className="text-sm text-orange-800">{WARDS_DATA.length} wards</p>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 className="font-semibold text-green-900 mb-2 flex items-center gap-2">
+                  <Pill className="w-5 h-5" />
+                  Medical Aids
+                </h3>
+                <p className="text-sm text-green-800">{MEDICAL_AIDS_DATA.length} providers</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
