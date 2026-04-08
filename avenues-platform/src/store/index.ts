@@ -134,6 +134,13 @@ export const useStore = create<StoreState>()(
       // ===== DATA ACTIONS =====
 
       addYearData: (year: number, data: YearData) => {
+        // Normalize dashboard metrics ONCE at storage time (not in selectors)
+        const normalizedData = {
+          ...data,
+          dash: normalizeDashboardMetrics(data.dash),
+          dashboard: normalizeDashboardMetrics(data.dashboard),
+        };
+
         set((state) => {
           const newYears = new Map(state.years);
           const existing = newYears.get(year);
@@ -141,10 +148,10 @@ export const useStore = create<StoreState>()(
             // MERGE: keep existing data for types not present in new data.
             // For Dashboard: if both exist, ADDITIVELY merge monthly arrays
             // (supports multiple facility files for same year)
-            let mergedDashboard = data.dashboard || existing.dashboard;
-            if (data.dashboard && existing.dashboard) {
+            let mergedDashboard = normalizedData.dashboard || existing.dashboard;
+            if (normalizedData.dashboard && existing.dashboard) {
               const a = existing.dashboard;
-              const b = data.dashboard;
+              const b = normalizedData.dashboard;
               const addArrays = (x: number[], y: number[]) => x.map((v, i) => v + (y[i] || 0));
               const mergeRecordArrays = (x: Record<string, number[]>, y: Record<string, number[]>) => {
                 const result: Record<string, number[]> = { ...x };
@@ -201,10 +208,10 @@ export const useStore = create<StoreState>()(
             }
 
             // For Location: merge doctor lists
-            let mergedLocation = data.location || existing.location;
-            if (data.location && existing.location) {
+            let mergedLocation = normalizedData.location || existing.location;
+            if (normalizedData.location && existing.location) {
               const aDocs = existing.location.doctors || [];
-              const bDocs = data.location.doctors || [];
+              const bDocs = normalizedData.location.doctors || [];
               // Merge doctors by name
               const docMap = new Map<string, typeof aDocs[0]>();
               for (const d of aDocs) docMap.set(d.name, d);
@@ -217,11 +224,11 @@ export const useStore = create<StoreState>()(
                 }
               }
               mergedLocation = {
-                ...data.location,
-                episodes: (existing.location.episodes || 0) + (data.location.episodes || 0),
-                totalRevenue: (existing.location.totalRevenue || 0) + (data.location.totalRevenue || 0),
+                ...normalizedData.location,
+                episodes: (existing.location.episodes || 0) + (normalizedData.location.episodes || 0),
+                totalRevenue: (existing.location.totalRevenue || 0) + (normalizedData.location.totalRevenue || 0),
                 doctors: Array.from(docMap.values()),
-                rawRows: [...(existing.location.rawRows || []), ...(data.location.rawRows || [])],
+                rawRows: [...(existing.location.rawRows || []), ...(normalizedData.location?.rawRows || [])],
               };
             }
 
@@ -231,12 +238,12 @@ export const useStore = create<StoreState>()(
               dashboard: mergedDashboard,
               loc: mergedLocation,
               location: mergedLocation,
-              apac: data.claims || existing.claims,
-              claims: data.claims || existing.claims,
+              apac: normalizedData.claims || existing.claims,
+              claims: normalizedData.claims || existing.claims,
             };
             newYears.set(year, merged);
           } else {
-            newYears.set(year, data);
+            newYears.set(year, normalizedData);
           }
           // Auto-switch to the year that was just added
           return { years: newYears, currentYear: year };
@@ -409,13 +416,17 @@ export const useCurrentYearData = () =>
   useStore((state) => state.years.get(state.currentYear));
 
 /**
- * Get the dashboard data for current year
+ * Get the raw dashboard data for current year.
+ * NOTE: normalizeDashboardMetrics must NOT be called inside a Zustand selector
+ * because it creates new object references on every call, causing infinite re-renders.
+ * Use the exported normalizeDashboardMetrics function in components with useMemo instead.
  */
 export const useDashboard = () =>
   useStore((state) => {
     const yearData = state.years.get(state.currentYear);
-    return normalizeDashboardMetrics(yearData?.dashboard || yearData?.dash || null);
+    return yearData?.dashboard || yearData?.dash || null;
   });
+
 
 /**
  * Get the location data for current year
