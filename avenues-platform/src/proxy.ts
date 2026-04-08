@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 /**
- * Middleware for route protection and auth redirects.
+ * Proxy for route protection and auth redirects.
  *
  * In development, all routes are accessible without auth.
  * In production, protected routes require a valid session cookie.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip auth check in development for easier iteration
@@ -26,7 +26,7 @@ export async function middleware(request: NextRequest) {
 
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
-  // API routes for authentication don't need middleware protection
+  // API routes for authentication don't need proxy protection
   if (pathname.startsWith("/api/auth")) {
     return NextResponse.next();
   }

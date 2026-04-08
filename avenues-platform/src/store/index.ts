@@ -20,6 +20,11 @@ const initialState = {
   } as FilterState,
 };
 
+type PersistedStoreState = Pick<
+  StoreState,
+  'years' | 'currentYear' | 'currentMonth' | 'compareYears' | 'activePage' | 'theme' | 'sidebarOpen' | 'filters'
+>;
+
 const MONTH_COUNT = 12;
 
 function normalizeSeries(values?: number[]): number[] {
@@ -300,6 +305,24 @@ export const useStore = create<StoreState>()(
     {
       name: 'avenues-clinic-store',
       version: 2,
+      migrate: (persistedState, version) => {
+        if (!persistedState || version < 2) {
+          return {
+            ...initialState,
+            years: new Map<number, YearData>(),
+          } as unknown as StoreState;
+        }
+
+        const state = persistedState as Partial<PersistedStoreState> & {
+          years?: Map<number, YearData> | Array<[number, YearData]>;
+        };
+
+        return {
+          ...initialState,
+          ...state,
+          years: state.years instanceof Map ? state.years : new Map(state.years || []),
+        } as unknown as StoreState;
+      },
       storage: {
         getItem: (key: string) => {
           if (typeof window === 'undefined') return null;
