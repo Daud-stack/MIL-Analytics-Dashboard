@@ -24,6 +24,48 @@ interface FileUpload {
 }
 
 /**
+ * Detect the most common year from admission dates in a LOC CSV.
+ * Scans up to 200 data rows looking for DD/MM/YYYY dates in the Adm Date column.
+ * Returns the year that appears most frequently (majority vote).
+ */
+function detectYearFromAdmDates(csvText: string): number {
+  const lines = csvText.split('\n');
+  if (lines.length < 2) return new Date().getFullYear();
+
+  // Find "Adm Date" column index from header
+  const headerCols = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const admDateIdx = headerCols.findIndex(h => h.includes('adm date') || h.includes('admission date'));
+
+  if (admDateIdx < 0) {
+    // Fallback to detectYear if no Adm Date column
+    return detectYear(csvText);
+  }
+
+  const yearCounts: Record<number, number> = {};
+  const limit = Math.min(lines.length, 202); // header + up to 200 rows
+  for (let i = 1; i < limit; i++) {
+    const cols = lines[i].split(',');
+    const dateStr = (cols[admDateIdx] || '').trim();
+    const match = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (match) {
+      const yr = parseInt(match[3], 10);
+      yearCounts[yr] = (yearCounts[yr] || 0) + 1;
+    }
+  }
+
+  // Return the year with the highest count
+  let bestYear = new Date().getFullYear();
+  let bestCount = 0;
+  for (const [yr, count] of Object.entries(yearCounts)) {
+    if (count > bestCount) {
+      bestCount = count;
+      bestYear = parseInt(yr, 10);
+    }
+  }
+  return bestYear;
+}
+
+/**
  * Robust file type detection using multiple strategies:
  * 1. Check for Dashboard format (2-line header + "Date," column headers)
  * 2. Check for Location/Episode format (patient-level columns)
@@ -95,8 +137,9 @@ function detectAndParse(csvText: string, manualYear: number | null): {
 
   if (isLocation) {
     try {
-      const yearMatch = csvText.match(/\b(202[0-9])\b/);
-      const year = manualYear || (yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear());
+      // Detect year from the majority of admission dates, not the first regex match.
+      // The first data row may have a prior-year admission (e.g., Dec 2024 admitted, Jan 2025 discharged).
+      const year = manualYear || detectYearFromAdmDates(csvText);
       const parsedData = parseLocationCSV(csvText);
       const rowCount = lines.length - 1;
       const doctorCount = parsedData?.location?.doctors?.length || 0;
