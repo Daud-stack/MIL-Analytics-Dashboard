@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Avoid Windows/OneDrive locks on the default ".next" output directory.
-  distDir: ".next-build",
+  // Keep Vercel on the default output path while using a separate local build dir
+  // to avoid Windows/OneDrive locks on ".next".
+  distDir: process.env.VERCEL ? ".next" : ".next-build",
 
   // Enable React strict mode for development
   reactStrictMode: true,
