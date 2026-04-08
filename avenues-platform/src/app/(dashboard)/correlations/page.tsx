@@ -115,10 +115,14 @@ export default function CorrelationsPage() {
   const variables: Variable[] = ['Revenue', 'Episodes', 'Occupancy', 'Theatre', 'Pharmacy', 'LOS', 'PatientDays'];
 
   const correlationMatrix = (() => {
-    const matrix = {} as CorrelationMatrix;
+    const emptyRow = () => variables.reduce((r, v) => { r[v] = 0; return r; }, {} as Record<Variable, number>);
+    const matrix: CorrelationMatrix = variables.reduce((acc, v) => {
+      acc[v] = emptyRow();
+      return acc;
+    }, {} as CorrelationMatrix);
 
     for (const var1 of variables) {
-      matrix[var1] = {};
+      matrix[var1] = emptyRow();
       for (const var2 of variables) {
         if (var1 === var2) {
           matrix[var1][var2] = 1.0;

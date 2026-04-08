@@ -223,7 +223,7 @@ export default function UploadPage() {
     console.log(`[Upload] Processing ${csvFiles.length} CSV files`);
 
     csvFiles.forEach(file => {
-      const id = Math.random().toString(36).substring(7);
+      const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(7);
       const newUpload: FileUpload = {
         id,
         file,

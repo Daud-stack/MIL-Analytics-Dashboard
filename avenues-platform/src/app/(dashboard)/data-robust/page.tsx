@@ -74,6 +74,22 @@ function winsorize(arr: number[], limits: [number, number] = [0.05, 0.05]): numb
   });
 }
 
+function createHistogramFn(data: number[]) {
+  const bins = 20;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const binWidth = (max - min) / bins || 1;
+  const hist = Array(bins).fill(0);
+  data.forEach((val) => {
+    const binIdx = Math.min(bins - 1, Math.floor((val - min) / binWidth));
+    hist[binIdx]++;
+  });
+  return Array.from({ length: bins }, (_, i) => ({
+    bin: `${Math.round(min + i * binWidth)}`,
+    count: hist[i],
+  }));
+}
+
 export default function DataRobustPage() {
   const [selectedMethod, setSelectedMethod] = useState('outlier-removal');
   const [applying, setApplying] = useState(false);
@@ -156,21 +172,7 @@ export default function DataRobustPage() {
       }
     : null;
 
-  const createHistogram = (data: number[]) => {
-    const bins = 20;
-    const min = Math.min(...data);
-    const max = Math.max(...data);
-    const binWidth = (max - min) / bins;
-    const hist = Array(bins).fill(0);
-    data.forEach((val) => {
-      const binIdx = Math.min(bins - 1, Math.floor((val - min) / binWidth));
-      hist[binIdx]++;
-    });
-    return Array.from({ length: bins }, (_, i) => ({
-      bin: `${Math.round(min + i * binWidth)}`,
-      count: hist[i],
-    }));
-  };
+  const createHistogram = createHistogramFn;
 
   const beforeHist = createHistogram(originalData);
   const afterHist = transformed ? createHistogram(transformed) : null;

@@ -197,7 +197,7 @@ export default function ForecastPage() {
               }}
             />
             <Tooltip
-              formatter={(value: number | string) => formatValue(Number(value))}
+              formatter={((value: string | number) => formatValue(Number(value))) as never}
               labelFormatter={(label) => `Month: ${label}`}
             />
             <Legend />

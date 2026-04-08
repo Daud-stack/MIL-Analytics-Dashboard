@@ -36,7 +36,7 @@ const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
         {payload.map((entry, idx: number) => (
           <p key={idx} style={{ color: entry.color }} className="text-sm">
             {entry.name}: {typeof entry.value === 'number'
-              ? entry.dataKey?.includes('Rev') || entry.dataKey?.includes('value')
+              ? String(entry.dataKey).includes('Rev') || String(entry.dataKey).includes('value')
                 ? formatCurrency(entry.value)
                 : formatNumber(entry.value)
               : entry.value}

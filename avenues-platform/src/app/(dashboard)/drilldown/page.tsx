@@ -41,6 +41,7 @@ interface ChartDataPoint {
   revenue: number;
   admissions: number;
   zScore: number;
+  [key: string]: string | number;
 }
 
 const CustomTooltip = ({ active, payload }: ChartTooltipProps<ChartDataPoint>) => {
@@ -80,6 +81,7 @@ export default function DrilldownPage() {
                 episodes: 0,
                 revenue: 0,
                 admissions: 0,
+                zScore: 0,
               };
             }
             acc[spec].episodes += doc.episodes;
@@ -106,13 +108,16 @@ export default function DrilldownPage() {
 
       case 'doctor': {
         // Medical aids for selected doctor
+        const firstDoc = locData.doctors[0];
+        const docEpisodes = firstDoc?.episodes ?? 0;
+        const docRevenue = firstDoc?.revenue ?? 0;
         return Object.entries(locData.medAids).map(([aid, count]) => {
-          const total = Object.values(locData.medAids).reduce((a, b) => a + b, 0);
+          const total = Object.values(locData.medAids).reduce((a, b) => a + b, 0) || 1;
           return {
             name: aid.substring(0, 15),
-            episodes: Math.floor(locData.doctors[0].episodes * (count / total)),
-            revenue: Math.floor(locData.doctors[0].revenue * (count / total)),
-            admissions: Math.floor(locData.doctors[0].episodes * 0.35 * (count / total)),
+            episodes: Math.floor(docEpisodes * (count / total)),
+            revenue: Math.floor(docRevenue * (count / total)),
+            admissions: Math.floor(docEpisodes * 0.35 * (count / total)),
             zScore: 0,
           };
         });
@@ -122,9 +127,9 @@ export default function DrilldownPage() {
         // Monthly breakdown for selected medical aid
         return MONTHS.map((month, idx) => ({
           name: month.substring(0, 3),
-          episodes: locData.monthEpisodes[idx],
-          revenue: locData.monthRevenue[idx],
-          admissions: Math.floor(locData.monthEpisodes[idx] * 0.35),
+          episodes: locData.monthEpisodes?.[idx] ?? 0,
+          revenue: locData.monthRevenue?.[idx] ?? 0,
+          admissions: Math.floor((locData.monthEpisodes?.[idx] ?? 0) * 0.35),
           zScore: 0,
         }));
       }

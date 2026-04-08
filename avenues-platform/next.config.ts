@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Avoid Windows/OneDrive locks on the default ".next" output directory.
+  distDir: ".next-build",
+
   // Enable React strict mode for development
   reactStrictMode: true,
 

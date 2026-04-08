@@ -41,7 +41,7 @@ const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
         <p className="text-sm font-medium text-gray-900">{label}</p>
         {payload.map((entry, index: number) => (
           <p key={index} style={{ color: entry.color }} className="text-sm">
-            {entry.name}: {formatNumber(entry.value)}
+            {entry.name}: {formatNumber(Number(entry.value ?? 0))}
           </p>
         ))}
       </div>

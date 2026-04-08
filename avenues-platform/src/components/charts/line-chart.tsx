@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { ChartRecord, ChartPrimitive } from '@/types';
+import { ChartRecord } from '@/types';
 
 export interface LineConfig {
   key: string;
@@ -50,9 +50,9 @@ export const LineChartComponent: React.FC<LineChartProps> = ({
         <XAxis dataKey={xKey} stroke="#666" />
         <YAxis tickFormatter={formatYAxisTick} stroke="#666" />
         <Tooltip
-          formatter={(value: ChartPrimitive) =>
+          formatter={((value: string | number) =>
             typeof value === 'number' && formatY ? formatY(value) : value ?? ''
-          }
+          ) as never}
           contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px' }}
         />
         {showLegend && <Legend />}

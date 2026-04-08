@@ -85,7 +85,7 @@ export default function YearComparisonPage() {
   const monthlyComparison = generateMonthlyComparison(selectedYears, years);
   const yearlyMetrics = selectedYears.map((year) => {
     const yearData = years.get(year);
-    const dashboard = yearData?.dashboard || yearData?.dash;
+    const dashboard = (yearData?.dashboard || yearData?.dash) ?? null;
     return calculateYearlyMetrics(year, dashboard);
   });
 

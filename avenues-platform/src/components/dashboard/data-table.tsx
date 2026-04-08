@@ -192,7 +192,7 @@ export const DataTable: React.FC<DataTableProps> = ({
                         getAlignClass(col.align)
                       )}
                     >
-                      {col.format ? col.format(row[col.key]) : row[col.key]}
+                      {col.format ? col.format(row[col.key]) : (row[col.key] as React.ReactNode)}
                     </td>
                   ))}
                 </tr>

@@ -9,7 +9,6 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { ChartPrimitive } from '@/types';
 
 export interface PieDataItem {
   name: string;
@@ -34,7 +33,7 @@ export const PieChartComponent: React.FC<PieChartProps> = ({
 }) => {
   const isDonut = innerRadius !== undefined && innerRadius > 0;
 
-  const formatTooltip = (value: ChartPrimitive) => {
+  const formatTooltip = (value: string | number) => {
     if (typeof value === 'number') {
       return formatValue ? formatValue(value) : value.toString();
     }
@@ -59,7 +58,7 @@ export const PieChartComponent: React.FC<PieChartProps> = ({
           ))}
         </Pie>
         <Tooltip
-          formatter={formatTooltip}
+          formatter={formatTooltip as never}
           contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px' }}
         />
         {showLegend && <Legend />}

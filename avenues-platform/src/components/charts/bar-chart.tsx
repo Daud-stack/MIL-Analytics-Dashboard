@@ -11,7 +11,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { ChartRecord, ChartPrimitive } from '@/types';
+import { ChartRecord } from '@/types';
 
 export interface BarConfig {
   key: string;
@@ -67,9 +67,9 @@ export const BarChartComponent: React.FC<BarChartProps> = ({
           </>
         )}
         <Tooltip
-          formatter={(value: ChartPrimitive) =>
+          formatter={((value: string | number) =>
             typeof value === 'number' && formatY ? formatY(value) : value ?? ''
-          }
+          ) as never}
           contentStyle={{ backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px' }}
         />
         {showLegend && <Legend />}
