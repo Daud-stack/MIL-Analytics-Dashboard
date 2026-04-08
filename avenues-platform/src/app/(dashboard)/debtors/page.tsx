@@ -20,7 +20,7 @@ import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
 import { ChartTooltipProps, MONTHS } from '@/types';
 import { formatCurrency, formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
-import { useDashboard } from '@/store';
+import { getLatestNonZeroIndex, useDashboard } from '@/store';
 import Link from 'next/link';
 
 const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48'];
@@ -119,7 +119,8 @@ export default function DebtorsPage() {
   const openingBalance = dashData.debtRecon.brought[0];
   const totalRevenueBilled = dashData.debtRecon.revenue.reduce((a, b) => a + b, 0);
   const totalPaymentsReceived = dashData.debtRecon.payments.reduce((a, b) => a + b, 0);
-  const closingBalance = dashData.debtRecon.total[dashData.debtRecon.total.length - 1];
+  const latestDebtIdx = Math.max(getLatestNonZeroIndex(dashData.debtRecon.total), 0);
+  const closingBalance = dashData.debtRecon.total[latestDebtIdx] || 0;
   const activeDSOMonths = dsoData.filter(d => d.dso > 0);
   const avgDSO = activeDSOMonths.length > 0 ? activeDSOMonths.reduce((a, b) => a + b.dso, 0) / activeDSOMonths.length : 0;
   const activeCollMonths = collectionData.filter(d => d.rate > 0);

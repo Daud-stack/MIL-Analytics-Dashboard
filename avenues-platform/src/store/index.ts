@@ -33,6 +33,19 @@ function hasNonZero(values?: number[]): boolean {
   return (values || []).some((value) => Number.isFinite(value) && value !== 0);
 }
 
+export function getLatestNonZeroIndex(values?: number[]): number {
+  if (!values || values.length === 0) return -1;
+
+  for (let idx = values.length - 1; idx >= 0; idx--) {
+    const value = values[idx];
+    if (Number.isFinite(value) && value !== 0) {
+      return idx;
+    }
+  }
+
+  return values.length - 1;
+}
+
 function averageRecordSeries(record?: Record<string, number[]>): number[] {
   const series = Object.values(record || {}).filter((entry) => entry.length > 0);
   if (series.length === 0) return new Array(MONTH_COUNT).fill(0);
@@ -286,7 +299,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'avenues-clinic-store',
-      version: 1,
+      version: 2,
       storage: {
         getItem: (key: string) => {
           if (typeof window === 'undefined') return null;
@@ -378,7 +391,7 @@ export const useCurrentYearData = () =>
 export const useDashboard = () =>
   useStore((state) => {
     const yearData = state.years.get(state.currentYear);
-    return yearData?.dashboard || yearData?.dash || null;
+    return normalizeDashboardMetrics(yearData?.dashboard || yearData?.dash || null);
   });
 
 /**

@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, AlertCircle, CheckCircle, Info,
   BarChart3, PieChart, Activity, DollarSign, Users, Zap, Heart, Pill
 } from 'lucide-react';
-import { useDashboard } from '@/store';
+import { getLatestNonZeroIndex, useDashboard } from '@/store';
 
 interface Insight {
   id: number;
@@ -39,8 +39,10 @@ export default function InsightsPage() {
 
     // 1. Revenue trend analysis
     if (dashboard.monthRevenue && dashboard.monthRevenue.length > 0) {
-      const current = dashboard.monthRevenue[dashboard.monthRevenue.length - 1];
-      const previous = dashboard.monthRevenue[dashboard.monthRevenue.length - 2] || current;
+      const currentIdx = getLatestNonZeroIndex(dashboard.monthRevenue);
+      const previousIdx = currentIdx > 0 ? getLatestNonZeroIndex(dashboard.monthRevenue.slice(0, currentIdx)) : currentIdx;
+      const current = dashboard.monthRevenue[Math.max(currentIdx, 0)] || 0;
+      const previous = previousIdx >= 0 ? (dashboard.monthRevenue[previousIdx] || current) : current;
       const change = safePercentChange(current, previous).toFixed(1);
       const changeNum = parseFloat(change);
 
@@ -69,7 +71,7 @@ export default function InsightsPage() {
 
     // 2. Occupancy analysis
     if (dashboard.occupancyBeds && dashboard.occupancyBeds.length > 0) {
-      const currentOcc = dashboard.occupancyBeds[dashboard.occupancyBeds.length - 1];
+      const currentOcc = dashboard.occupancyBeds[Math.max(getLatestNonZeroIndex(dashboard.occupancyBeds), 0)] || 0;
       const target = 75;
       const diff = (currentOcc - target).toFixed(1);
 
@@ -98,7 +100,7 @@ export default function InsightsPage() {
 
     // 3. Theatre utilization
     if (dashboard.theatreUtil && dashboard.theatreUtil.length > 0) {
-      const theatreUtil = dashboard.theatreUtil[dashboard.theatreUtil.length - 1];
+      const theatreUtil = dashboard.theatreUtil[Math.max(getLatestNonZeroIndex(dashboard.theatreUtil), 0)] || 0;
       if (theatreUtil > 80) {
         generateInsights.push({
           id: id++,
@@ -114,8 +116,10 @@ export default function InsightsPage() {
 
     // 4. Admissions trend
     if (dashboard.monthEpisodes && dashboard.monthEpisodes.length > 0) {
-      const currentAdm = dashboard.monthEpisodes[dashboard.monthEpisodes.length - 1];
-      const previousAdm = dashboard.monthEpisodes[dashboard.monthEpisodes.length - 2] || currentAdm;
+      const currentIdx = getLatestNonZeroIndex(dashboard.monthEpisodes);
+      const previousIdx = currentIdx > 0 ? getLatestNonZeroIndex(dashboard.monthEpisodes.slice(0, currentIdx)) : currentIdx;
+      const currentAdm = dashboard.monthEpisodes[Math.max(currentIdx, 0)] || 0;
+      const previousAdm = previousIdx >= 0 ? (dashboard.monthEpisodes[previousIdx] || currentAdm) : currentAdm;
       const admChange = safePercentChange(currentAdm, previousAdm).toFixed(1);
 
       if (parseFloat(admChange) > 5) {
@@ -152,7 +156,7 @@ export default function InsightsPage() {
 
     // 6. Episodes finalized
     if (dashboard.epsFinalised && dashboard.epsFinalised.length > 0) {
-      const finalised = dashboard.epsFinalised[dashboard.epsFinalised.length - 1];
+      const finalised = dashboard.epsFinalised[Math.max(getLatestNonZeroIndex(dashboard.epsFinalised), 0)] || 0;
       if (finalised > 0) {
         generateInsights.push({
           id: id++,

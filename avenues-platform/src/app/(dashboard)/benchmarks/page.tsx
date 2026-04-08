@@ -14,7 +14,7 @@ import {
   LineChart,
   Line,
 } from 'recharts';
-import { useDashboard } from '@/store';
+import { getLatestNonZeroIndex, useDashboard } from '@/store';
 import { BENCHMARKS } from '@/types';
 
 interface BenchmarkKPI {
@@ -88,8 +88,10 @@ export default function BenchmarksPage() {
 
     // 1. Admissions
     if (dashboard.monthEpisodes && dashboard.monthEpisodes.length > 0) {
-      const current = dashboard.monthEpisodes[dashboard.monthEpisodes.length - 1];
-      const previous = dashboard.monthEpisodes[dashboard.monthEpisodes.length - 2] || current;
+      const currentIdx = getLatestNonZeroIndex(dashboard.monthEpisodes);
+      const previousIdx = currentIdx > 0 ? getLatestNonZeroIndex(dashboard.monthEpisodes.slice(0, currentIdx)) : currentIdx;
+      const current = dashboard.monthEpisodes[Math.max(currentIdx, 0)] || 0;
+      const previous = previousIdx >= 0 ? (dashboard.monthEpisodes[previousIdx] || current) : current;
       const trend = safePercentChange(current, previous).toFixed(0);
       const internalBench = 240;
       const externalBench = 260;
@@ -117,8 +119,10 @@ export default function BenchmarksPage() {
 
     // 2. Occupancy
     if (dashboard.occupancyBeds && dashboard.occupancyBeds.length > 0) {
-      const current = dashboard.occupancyBeds[dashboard.occupancyBeds.length - 1];
-      const previous = dashboard.occupancyBeds[dashboard.occupancyBeds.length - 2] || current;
+      const currentIdx = getLatestNonZeroIndex(dashboard.occupancyBeds);
+      const previousIdx = currentIdx > 0 ? getLatestNonZeroIndex(dashboard.occupancyBeds.slice(0, currentIdx)) : currentIdx;
+      const current = dashboard.occupancyBeds[Math.max(currentIdx, 0)] || 0;
+      const previous = previousIdx >= 0 ? (dashboard.occupancyBeds[previousIdx] || current) : current;
       const trend = safePercentChange(current, previous).toFixed(0);
       const internalBench = 70;
       const externalBench = 75;
@@ -146,8 +150,10 @@ export default function BenchmarksPage() {
 
     // 3. Revenue per Episode
     if (dashboard.monthRevenue && dashboard.monthEpisodes && dashboard.monthRevenue.length > 0 && dashboard.monthEpisodes.length > 0) {
-      const currentRev = dashboard.monthRevenue[dashboard.monthRevenue.length - 1];
-      const currentEps = dashboard.monthEpisodes[dashboard.monthEpisodes.length - 1];
+      const currentRevIdx = getLatestNonZeroIndex(dashboard.monthRevenue);
+      const currentEpsIdx = getLatestNonZeroIndex(dashboard.monthEpisodes);
+      const currentRev = dashboard.monthRevenue[Math.max(currentRevIdx, 0)] || 0;
+      const currentEps = dashboard.monthEpisodes[Math.max(currentEpsIdx, 0)] || 0;
       const revPerEp = currentEps > 0 ? currentRev / currentEps : 0;
       const internalBench = 11000;
       const externalBench = 12500;
@@ -175,8 +181,10 @@ export default function BenchmarksPage() {
 
     // 4. Theatre Utilization
     if (dashboard.theatreUtil && dashboard.theatreUtil.length > 0) {
-      const current = dashboard.theatreUtil[dashboard.theatreUtil.length - 1];
-      const previous = dashboard.theatreUtil[dashboard.theatreUtil.length - 2] || current;
+      const currentIdx = getLatestNonZeroIndex(dashboard.theatreUtil);
+      const previousIdx = currentIdx > 0 ? getLatestNonZeroIndex(dashboard.theatreUtil.slice(0, currentIdx)) : currentIdx;
+      const current = dashboard.theatreUtil[Math.max(currentIdx, 0)] || 0;
+      const previous = previousIdx >= 0 ? (dashboard.theatreUtil[previousIdx] || current) : current;
       const trend = safePercentChange(current, previous).toFixed(0);
       const internalBench = 80;
       const externalBench = 90;
@@ -204,8 +212,10 @@ export default function BenchmarksPage() {
 
     // 5. Pharmacy Revenue
     if (dashboard.pharmacyRev && dashboard.pharmacyRev.length > 0) {
-      const current = dashboard.pharmacyRev[dashboard.pharmacyRev.length - 1];
-      const previous = dashboard.pharmacyRev[dashboard.pharmacyRev.length - 2] || current;
+      const currentIdx = getLatestNonZeroIndex(dashboard.pharmacyRev);
+      const previousIdx = currentIdx > 0 ? getLatestNonZeroIndex(dashboard.pharmacyRev.slice(0, currentIdx)) : currentIdx;
+      const current = dashboard.pharmacyRev[Math.max(currentIdx, 0)] || 0;
+      const previous = previousIdx >= 0 ? (dashboard.pharmacyRev[previousIdx] || current) : current;
       const trend = safePercentChange(current, previous).toFixed(0);
       const internalBench = 420000;
       const externalBench = 500000;
