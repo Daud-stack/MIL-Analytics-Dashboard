@@ -23,6 +23,13 @@ export default function InsightsPage() {
 
   const filters = ['All', 'Good', 'Warning', 'Bad', 'Info'];
 
+  const safePercentChange = (current: number, previous: number) => {
+    if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) {
+      return 0;
+    }
+    return ((current - previous) / previous) * 100;
+  };
+
   // Generate insights from real data
   const insights: Insight[] = useMemo(() => {
     if (!dashboard) return [];
@@ -34,7 +41,7 @@ export default function InsightsPage() {
     if (dashboard.monthRevenue && dashboard.monthRevenue.length > 0) {
       const current = dashboard.monthRevenue[dashboard.monthRevenue.length - 1];
       const previous = dashboard.monthRevenue[dashboard.monthRevenue.length - 2] || current;
-      const change = ((current - previous) / previous * 100).toFixed(1);
+      const change = safePercentChange(current, previous).toFixed(1);
       const changeNum = parseFloat(change);
 
       if (changeNum > 5) {
@@ -109,7 +116,7 @@ export default function InsightsPage() {
     if (dashboard.monthEpisodes && dashboard.monthEpisodes.length > 0) {
       const currentAdm = dashboard.monthEpisodes[dashboard.monthEpisodes.length - 1];
       const previousAdm = dashboard.monthEpisodes[dashboard.monthEpisodes.length - 2] || currentAdm;
-      const admChange = ((currentAdm - previousAdm) / previousAdm * 100).toFixed(1);
+      const admChange = safePercentChange(currentAdm, previousAdm).toFixed(1);
 
       if (parseFloat(admChange) > 5) {
         generateInsights.push({
@@ -128,7 +135,7 @@ export default function InsightsPage() {
     if (dashboard.pharmacyRev && dashboard.monthRevenue) {
       const pharmacyTotal = dashboard.pharmacyRev.reduce((a, b) => a + b, 0);
       const revenueTotal = dashboard.monthRevenue.reduce((a, b) => a + b, 0);
-      const pharmacyPct = (pharmacyTotal / revenueTotal * 100).toFixed(1);
+      const pharmacyPct = (revenueTotal > 0 ? (pharmacyTotal / revenueTotal) * 100 : 0).toFixed(1);
 
       if (parseFloat(pharmacyPct) > 15) {
         generateInsights.push({
@@ -359,8 +366,8 @@ export default function InsightsPage() {
                   <p className="text-sm text-slate-600">{insight.description}</p>
                 </div>
                 <div className="flex-shrink-0 text-right">
-                  <p className="text-sm font-semibold text-slate-900">{insight.metric}</p>
-                  <p className="text-xs text-slate-500 mt-1">{insight.timestamp}</p>
+                  <p className="text-sm font-medium text-slate-500">{insight.metric}</p>
+                  <p className="text-xs text-slate-400">{insight.timestamp}</p>
                 </div>
               </div>
             );

@@ -75,9 +75,7 @@ const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
 
   // Experimental features (if needed)
-  experimental: {
-    // Add experimental features here
-  },
+  experimental: {},
 };
 
 export default nextConfig;

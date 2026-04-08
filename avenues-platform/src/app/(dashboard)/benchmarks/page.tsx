@@ -29,6 +29,13 @@ interface BenchmarkKPI {
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+const safePercentChange = (current: number, previous: number) => {
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) {
+    return 0;
+  }
+  return ((current - previous) / previous) * 100;
+};
+
 const getStatusColor = (status: 'above' | 'at' | 'below') => {
   switch (status) {
     case 'above':
@@ -83,7 +90,7 @@ export default function BenchmarksPage() {
     if (dashboard.monthEpisodes && dashboard.monthEpisodes.length > 0) {
       const current = dashboard.monthEpisodes[dashboard.monthEpisodes.length - 1];
       const previous = dashboard.monthEpisodes[dashboard.monthEpisodes.length - 2] || current;
-      const trend = ((current - previous) / previous * 100).toFixed(0);
+      const trend = safePercentChange(current, previous).toFixed(0);
       const internalBench = 240;
       const externalBench = 260;
 
@@ -112,7 +119,7 @@ export default function BenchmarksPage() {
     if (dashboard.occupancyBeds && dashboard.occupancyBeds.length > 0) {
       const current = dashboard.occupancyBeds[dashboard.occupancyBeds.length - 1];
       const previous = dashboard.occupancyBeds[dashboard.occupancyBeds.length - 2] || current;
-      const trend = ((current - previous) / previous * 100).toFixed(0);
+      const trend = safePercentChange(current, previous).toFixed(0);
       const internalBench = 70;
       const externalBench = 75;
 
@@ -141,7 +148,7 @@ export default function BenchmarksPage() {
     if (dashboard.monthRevenue && dashboard.monthEpisodes && dashboard.monthRevenue.length > 0 && dashboard.monthEpisodes.length > 0) {
       const currentRev = dashboard.monthRevenue[dashboard.monthRevenue.length - 1];
       const currentEps = dashboard.monthEpisodes[dashboard.monthEpisodes.length - 1];
-      const revPerEp = currentRev / currentEps;
+      const revPerEp = currentEps > 0 ? currentRev / currentEps : 0;
       const internalBench = 11000;
       const externalBench = 12500;
 
@@ -170,7 +177,7 @@ export default function BenchmarksPage() {
     if (dashboard.theatreUtil && dashboard.theatreUtil.length > 0) {
       const current = dashboard.theatreUtil[dashboard.theatreUtil.length - 1];
       const previous = dashboard.theatreUtil[dashboard.theatreUtil.length - 2] || current;
-      const trend = ((current - previous) / previous * 100).toFixed(0);
+      const trend = safePercentChange(current, previous).toFixed(0);
       const internalBench = 80;
       const externalBench = 90;
 
@@ -199,7 +206,7 @@ export default function BenchmarksPage() {
     if (dashboard.pharmacyRev && dashboard.pharmacyRev.length > 0) {
       const current = dashboard.pharmacyRev[dashboard.pharmacyRev.length - 1];
       const previous = dashboard.pharmacyRev[dashboard.pharmacyRev.length - 2] || current;
-      const trend = ((current - previous) / previous * 100).toFixed(0);
+      const trend = safePercentChange(current, previous).toFixed(0);
       const internalBench = 420000;
       const externalBench = 500000;
 
@@ -442,9 +449,9 @@ export default function BenchmarksPage() {
                 type="monotone"
                 dataKey="target"
                 stroke="#10b981"
-                strokeDasharray="5 5"
                 strokeWidth={2}
-                name="Target (100%)"
+                strokeDasharray="5 5"
+                name="Target"
               />
             </LineChart>
           </ResponsiveContainer>

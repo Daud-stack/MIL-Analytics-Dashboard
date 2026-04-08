@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { StoreState, FilterState, YearData, Theme, MONTHS } from '@/types';
+import { StoreState, FilterState, YearData, Theme, MONTHS, DashboardMetrics } from '@/types';
 
 const currentYear = new Date().getFullYear();
 
@@ -19,6 +19,93 @@ const initialState = {
     months: [],
   } as FilterState,
 };
+
+const MONTH_COUNT = 12;
+
+function normalizeSeries(values?: number[]): number[] {
+  return Array.from({ length: MONTH_COUNT }, (_, idx) => {
+    const value = values?.[idx];
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  });
+}
+
+function hasNonZero(values?: number[]): boolean {
+  return (values || []).some((value) => Number.isFinite(value) && value !== 0);
+}
+
+function averageRecordSeries(record?: Record<string, number[]>): number[] {
+  const series = Object.values(record || {}).filter((entry) => entry.length > 0);
+  if (series.length === 0) return new Array(MONTH_COUNT).fill(0);
+
+  return Array.from({ length: MONTH_COUNT }, (_, idx) => {
+    const sum = series.reduce((acc, entry) => acc + (entry[idx] || 0), 0);
+    return sum / series.length;
+  });
+}
+
+function normalizeDashboardMetrics(metrics: DashboardMetrics | null): DashboardMetrics | null {
+  if (!metrics) return null;
+
+  const monthRevenue = normalizeSeries(metrics.monthRevenue);
+  const epsFinalised = normalizeSeries(metrics.epsFinalised);
+  const admissionsFallback = Array.from({ length: MONTH_COUNT }, (_, idx) =>
+    (metrics.admCasualty?.[idx] || 0) +
+    (metrics.admDay?.[idx] || 0) +
+    (metrics.admInpatient?.[idx] || 0) +
+    (metrics.admLab?.[idx] || 0)
+  );
+  const wardOccupancyAverage = averageRecordSeries(metrics.pctOccWard);
+
+  const monthEpisodes = hasNonZero(metrics.monthEpisodes)
+    ? normalizeSeries(metrics.monthEpisodes)
+    : hasNonZero(epsFinalised)
+      ? epsFinalised
+      : admissionsFallback;
+
+  const occupancyBeds = hasNonZero(metrics.occupancyBeds)
+    ? normalizeSeries(metrics.occupancyBeds)
+    : hasNonZero(wardOccupancyAverage)
+      ? wardOccupancyAverage
+      : normalizeSeries(metrics.theatrePctOcc);
+
+  const theatreUtil = hasNonZero(metrics.theatreUtil)
+    ? normalizeSeries(metrics.theatreUtil)
+    : normalizeSeries(metrics.theatrePctOcc);
+
+  const patientDays = Object.keys(metrics.patientDays || {}).length > 0
+    ? metrics.patientDays
+    : metrics.patDaysWard;
+
+  const totalRevenue = metrics.totalRevenue > 0
+    ? metrics.totalRevenue
+    : monthRevenue.reduce((sum, value) => sum + value, 0);
+
+  return {
+    ...metrics,
+    totalRevenue,
+    monthRevenue,
+    monthEpisodes,
+    theatreUtil,
+    theatrePctOcc: normalizeSeries(metrics.theatrePctOcc),
+    theatreCases: normalizeSeries(metrics.theatreCases),
+    theatreMinutes: normalizeSeries(metrics.theatreMinutes),
+    admCasualty: normalizeSeries(metrics.admCasualty),
+    admDay: normalizeSeries(metrics.admDay),
+    admInpatient: normalizeSeries(metrics.admInpatient),
+    admLab: normalizeSeries(metrics.admLab),
+    pharmacyRx: normalizeSeries(metrics.pharmacyRx),
+    pharmacyRev: normalizeSeries(metrics.pharmacyRev),
+    occupancyBeds,
+    occMidnight: normalizeSeries(metrics.occMidnight),
+    casToInpatient: normalizeSeries(metrics.casToInpatient),
+    epsFinalised,
+    dischNotFinalised: normalizeSeries(metrics.dischNotFinalised),
+    revPerPatDay: normalizeSeries(metrics.revPerPatDay),
+    gpEthical: normalizeSeries(metrics.gpEthical),
+    gpSurgical: normalizeSeries(metrics.gpSurgical),
+    patientDays,
+  };
+}
 
 export const useStore = create<StoreState>()(
   persist(
@@ -314,8 +401,6 @@ export const useClaims = () =>
 
 /**
  * Get a single month value from an array, or sum if month is 0 (full year)
- * @param arr - array of 12 monthly values
- * @param month - 0-11 for specific month, or 0 for sum of all (from currentMonth state)
  */
 export const useMonthValue = (arr?: number[]) => {
   const currentMonth = useCurrentMonth();
@@ -328,8 +413,6 @@ export const useMonthValue = (arr?: number[]) => {
 
 /**
  * Get a month slice or full array
- * @param arr - array of 12 monthly values
- * @returns the full array or sliced array based on currentMonth
  */
 export const useMonthData = (arr?: number[]) => {
   const currentMonth = useCurrentMonth();

@@ -131,7 +131,10 @@ export default function WardBedsPage() {
   // KPI calculations
   const totalWards = WARDS.length;
   const totalPatientDays = metrics.patDaysWard ? Object.values(metrics.patDaysWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0) : 0;
-  const avgOccupancy = metrics.pctOccWard ? Object.values(metrics.pctOccWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0) / (Object.keys(metrics.pctOccWard).length * 12) : 0;
+  const pctOccWardCount = metrics.pctOccWard ? Object.keys(metrics.pctOccWard).length : 0;
+  const avgOccupancy = pctOccWardCount > 0
+    ? Object.values(metrics.pctOccWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0) / (pctOccWardCount * 12)
+    : 0;
 
   // Ward capacity vs occupied
   const wardCapacityData = WARDS.map((ward, idx) => {

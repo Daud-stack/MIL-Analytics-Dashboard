@@ -127,14 +127,43 @@ function getMonthIndex(monthName: string): number {
 }
 
 /**
- * Safe parse number, handling decimals and comma-free formats
+ * Safe parse number, handling decimals, comma-formatted numbers, and quoted values
  */
 function parseNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
-  const str = String(value).trim();
+  let str = String(value).trim();
   if (!str) return 0;
+  // Strip quotes
+  str = str.replace(/^["']|["']$/g, '');
+  // Strip thousand-separator commas (e.g., "1,234,567.89" → "1234567.89")
+  str = str.replace(/,/g, '');
+  // Strip currency symbols and spaces
+  str = str.replace(/[$£€\s]/g, '');
   const num = parseFloat(str);
   return isNaN(num) ? 0 : num;
+}
+
+/**
+ * Split a CSV line respecting quoted fields
+ * e.g., 'January,"1,234",5678' → ['January', '1,234', '5678']
+ */
+function splitCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
 }
 
 // ===== PARSING FUNCTIONS =====
@@ -157,9 +186,9 @@ export function parseDashboardCSV(csvText: string): YearData {
   const yearMatch = line2.match(/\b(20\d{2})\b/);
   const year = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
 
-  // Parse headers from line 3 (index 2). Split and keep all non-empty.
+  // Parse headers from line 3 (index 2). Use CSV-aware split to handle quoted headers.
   const headerLine = lines[2] || '';
-  const allHeaders = headerLine.split(',').map(h => h.trim());
+  const allHeaders = splitCSVLine(headerLine);
   // First header is "Date", rest are data columns. Filter trailing empties.
   const dataHeaders = allHeaders.slice(1).filter(h => h.length > 0);
 
@@ -215,13 +244,33 @@ export function parseDashboardCSV(csvText: string): YearData {
     },
   };
 
+  /**
+   * Fuzzy lookup: find a value by checking if the header contains ALL given keywords
+   * Returns the numeric value from valueMap, or 0 if not found
+   */
+  function getVal(valueMap: Map<string, number>, ...keywords: string[]): number {
+    // First try exact match
+    const exactKey = keywords.join('-');
+    if (valueMap.has(exactKey)) return valueMap.get(exactKey) || 0;
+
+    // Then try normalized fuzzy match: find first header containing ALL keywords
+    const normalizedKW = keywords.map(kw => kw.toLowerCase().replace(/[\s\-_]+/g, ''));
+    for (const [header, val] of valueMap.entries()) {
+      const normalizedH = header.toLowerCase().replace(/[\s\-_]+/g, '');
+      if (normalizedKW.every(kw => normalizedH.includes(kw))) {
+        return val;
+      }
+    }
+    return 0;
+  }
+
   // Parse data rows starting at line index 3 (after facility, description, headers)
   for (let lineIdx = 3; lineIdx < lines.length; lineIdx++) {
     const line = lines[lineIdx];
     if (!line) continue;
 
-    // Split the entire line by comma
-    const rawValues = line.split(',');
+    // Use CSV-aware split to handle quoted fields (e.g., "1,234")
+    const rawValues = splitCSVLine(line);
 
     // First value is month name
     const monthName = (rawValues[0] || '').trim();
@@ -236,44 +285,94 @@ export function parseDashboardCSV(csvText: string): YearData {
       valueMap.set(header, parseNumber(rawValues[idx + 1]));
     });
 
-    console.log(`[Parser] ${monthName}: revenue=${valueMap.get('Billing Statistics-Total Revenue')}, admLab=${valueMap.get('Admissions-LABORATORY')}, episodes=${valueMap.get('Episodes Finalised')}`);
+    console.log(`[Parser] ${monthName}: revenue=${getVal(valueMap, 'Billing Statistics', 'Total Revenue')}, admLab=${getVal(valueMap, 'Admissions', 'LABORATORY')}, episodes=${getVal(valueMap, 'Episodes Finalised')}`);
 
-    // Extract and assign values
-    metrics.admCasualty[monthIdx] = valueMap.get('Admissions-CASUALTY PATIENT') || 0;
-    metrics.admLab[monthIdx] = valueMap.get('Admissions-LABORATORY') || 0;
-    metrics.casToInpatient[monthIdx] = valueMap.get('Patients Transferred Fom Casualty To In Patient') || 0;
+    // Extract and assign values using flexible matching
+    metrics.admCasualty[monthIdx] = getVal(valueMap, 'Admissions', 'CASUALTY');
+    metrics.admLab[monthIdx] = getVal(valueMap, 'Admissions', 'LABORATORY');
+    metrics.admInpatient[monthIdx] = getVal(valueMap, 'Admissions', 'INPATIENT') || getVal(valueMap, 'Admissions', 'IN PATIENT');
+    metrics.admDay[monthIdx] = getVal(valueMap, 'Admissions', 'DAY');
+    metrics.casToInpatient[monthIdx] = getVal(valueMap, 'Transferred', 'Casualty', 'Patient');
 
-    const rxHospital = valueMap.get('Number of Prescriptions Dispensed-Hospital') || 0;
-    const rxRetail = valueMap.get('Number of Prescriptions Dispensed-Retail') || 0;
+    const rxHospital = getVal(valueMap, 'Prescriptions Dispensed', 'Hospital');
+    const rxRetail = getVal(valueMap, 'Prescriptions Dispensed', 'Retail');
     metrics.pharmacyRx[monthIdx] = rxHospital + rxRetail;
 
-    const revHospital = valueMap.get('Revenue of Prescriptions Dispensed-Hospital') || 0;
-    const revRetail = valueMap.get('Revenue of Prescriptions Dispensed-Retail') || 0;
+    const revHospital = getVal(valueMap, 'Revenue', 'Prescriptions Dispensed', 'Hospital');
+    const revRetail = getVal(valueMap, 'Revenue', 'Prescriptions Dispensed', 'Retail');
     metrics.pharmacyRev[monthIdx] = revHospital + revRetail;
 
-    metrics.monthRevenue[monthIdx] = valueMap.get('Billing Statistics-Total Revenue') || 0;
-    metrics.revPerPatDay[monthIdx] = valueMap.get('Billing Statistics-Revenue Per Patient Day') || 0;
-    metrics.epsFinalised[monthIdx] = valueMap.get('Episodes Finalised') || 0;
-    metrics.dischNotFinalised[monthIdx] = valueMap.get('Discharges Not Finalised') || 0;
+    metrics.monthRevenue[monthIdx] = getVal(valueMap, 'Billing Statistics', 'Total Revenue');
+    metrics.revPerPatDay[monthIdx] = getVal(valueMap, 'Revenue Per Patient Day');
+    metrics.epsFinalised[monthIdx] = getVal(valueMap, 'Episodes Finalised');
+    metrics.dischNotFinalised[monthIdx] = getVal(valueMap, 'Discharges Not Finalised');
 
-    // Revenue by location/centre (arrays already initialized above)
-    metrics.revLocation['ADJUSTMENT'][monthIdx] = valueMap.get('Revenue Per Revenue Centre-ADJUSTMENT') || 0;
-    metrics.revLocation['Laboratory Fee'][monthIdx] = valueMap.get('Revenue Per Revenue Centre-Laboratory Fee') || 0;
-    metrics.revLocation['None'][monthIdx] = valueMap.get('Revenue Per Revenue Centre-None') || 0;
+    // Theatre
+    metrics.theatreCases[monthIdx] = getVal(valueMap, 'Theatre', 'Cases');
+    metrics.theatreMinutes[monthIdx] = getVal(valueMap, 'Theatre', 'Minutes');
+    metrics.theatreUtil[monthIdx] = getVal(valueMap, 'Theatre', 'Util');
+    metrics.theatrePctOcc[monthIdx] = getVal(valueMap, 'Theatre', 'Occ');
+
+    // Bed occupancy
+    metrics.occupancyBeds[monthIdx] = getVal(valueMap, 'Bed', 'Occupancy') || getVal(valueMap, 'Occupancy', 'Beds');
+    metrics.occMidnight[monthIdx] = getVal(valueMap, 'Midnight', 'Census') || getVal(valueMap, 'Occupancy', 'Midnight');
+
+    // Revenue by location/centre - dynamically detect all "Revenue Per Revenue Centre-*" columns
+    for (const header of dataHeaders) {
+      const lowerH = header.toLowerCase();
+      if (lowerH.includes('revenue per revenue centre') || lowerH.includes('revenue per revenue center')) {
+        const parts = header.split('-');
+        const centreName = parts.length > 1 ? parts.slice(1).join('-').trim() : header;
+        if (!metrics.revLocation[centreName]) {
+          metrics.revLocation[centreName] = new Array(12).fill(0);
+        }
+        metrics.revLocation[centreName][monthIdx] = valueMap.get(header) || 0;
+      }
+    }
+
+    // Patient days and occupancy by ward - dynamically detect
+    for (const header of dataHeaders) {
+      const lowerH = header.toLowerCase();
+      if (lowerH.includes('patient days') || lowerH.includes('pat days')) {
+        const parts = header.split('-');
+        const wardName = parts.length > 1 ? parts.slice(1).join('-').trim() : header;
+        if (lowerH.includes('loc') || lowerH.includes('location')) {
+          if (!metrics.patDaysLOC[wardName]) metrics.patDaysLOC[wardName] = new Array(12).fill(0);
+          metrics.patDaysLOC[wardName][monthIdx] = valueMap.get(header) || 0;
+        } else {
+          if (!metrics.patDaysWard[wardName]) metrics.patDaysWard[wardName] = new Array(12).fill(0);
+          metrics.patDaysWard[wardName][monthIdx] = valueMap.get(header) || 0;
+        }
+      }
+      if (lowerH.includes('% occ') || lowerH.includes('pct occ') || lowerH.includes('percentage occ')) {
+        const parts = header.split('-');
+        const wardName = parts.length > 1 ? parts.slice(1).join('-').trim() : header;
+        if (!metrics.pctOccWard[wardName]) metrics.pctOccWard[wardName] = new Array(12).fill(0);
+        metrics.pctOccWard[wardName][monthIdx] = valueMap.get(header) || 0;
+      }
+      if (lowerH.includes('admissions per ward') || lowerH.includes('adm per ward')) {
+        const parts = header.split('-');
+        const wardName = parts.length > 1 ? parts.slice(1).join('-').trim() : header;
+        if (!metrics.admPerWard[wardName]) metrics.admPerWard[wardName] = new Array(12).fill(0);
+        metrics.admPerWard[wardName][monthIdx] = valueMap.get(header) || 0;
+      }
+    }
 
     // Payments
-    metrics.payments.deposits[monthIdx] = valueMap.get('Payments Per Day-Deposits') || 0;
-    metrics.payments.individual[monthIdx] = valueMap.get('Payments Per Day-Individual Payments') || 0;
-    metrics.payments.medAid[monthIdx] = valueMap.get('Payments Per Day-Medical Aid Payments') || 0;
-    metrics.payments.batched[monthIdx] = valueMap.get('Payments Per Day-Batched Payments') || 0;
+    metrics.payments.deposits[monthIdx] = getVal(valueMap, 'Payments', 'Deposits');
+    metrics.payments.individual[monthIdx] = getVal(valueMap, 'Payments', 'Individual');
+    metrics.payments.medAid[monthIdx] = getVal(valueMap, 'Payments', 'Medical Aid');
+    metrics.payments.batched[monthIdx] = getVal(valueMap, 'Payments', 'Batched');
+
+    // GP Ethical/Surgical
+    metrics.gpEthical[monthIdx] = getVal(valueMap, 'GP', 'Ethical');
+    metrics.gpSurgical[monthIdx] = getVal(valueMap, 'GP', 'Surgical');
 
     // Debtors reconciliation
-    // Note: "Account Sundries" and "SunList" contain the same value.
-    // Only SunList enters the debtors formula: Closing = BF + Revenue - Payments + SunList
-    metrics.debtRecon.brought[monthIdx] = valueMap.get('Debtors Reconciliation Per Day-Balance Brought Forward') || 0;
-    metrics.debtRecon.revenue[monthIdx] = valueMap.get('Debtors Reconciliation Per Day-Revenue') || 0;
-    metrics.debtRecon.payments[monthIdx] = valueMap.get('Debtors Reconciliation Per Day-Payments') || 0;
-    metrics.debtRecon.sundries[monthIdx] = valueMap.get('Debtors Reconciliation Per Day-SunList') || 0;
+    metrics.debtRecon.brought[monthIdx] = getVal(valueMap, 'Debtors', 'Balance Brought Forward') || getVal(valueMap, 'Debtors', 'Brought Forward');
+    metrics.debtRecon.revenue[monthIdx] = getVal(valueMap, 'Debtors', 'Revenue');
+    metrics.debtRecon.payments[monthIdx] = getVal(valueMap, 'Debtors', 'Payments');
+    metrics.debtRecon.sundries[monthIdx] = getVal(valueMap, 'Debtors', 'SunList') || getVal(valueMap, 'Debtors', 'Sundries');
 
     // Closing balance = BF + Revenue - Payments + Sundries
     metrics.debtRecon.total[monthIdx] =
@@ -281,6 +380,24 @@ export function parseDashboardCSV(csvText: string): YearData {
       metrics.debtRecon.revenue[monthIdx] -
       metrics.debtRecon.payments[monthIdx] +
       metrics.debtRecon.sundries[monthIdx];
+  }
+
+  metrics.monthEpisodes = metrics.monthEpisodes.map((value, idx) => {
+    if (value > 0) return value;
+    if (metrics.epsFinalised[idx] > 0) return metrics.epsFinalised[idx];
+    return metrics.admCasualty[idx] + metrics.admDay[idx] + metrics.admInpatient[idx] + metrics.admLab[idx];
+  });
+
+  if (!Object.keys(metrics.patientDays).length && Object.keys(metrics.patDaysWard).length) {
+    metrics.patientDays = { ...metrics.patDaysWard };
+  }
+
+  if (!metrics.occupancyBeds.some((value) => value > 0) && Object.keys(metrics.pctOccWard).length) {
+    metrics.occupancyBeds = Array.from({ length: 12 }, (_, idx) => {
+      const wards = Object.values(metrics.pctOccWard);
+      const sum = wards.reduce((acc, wardValues) => acc + (wardValues[idx] || 0), 0);
+      return wards.length > 0 ? sum / wards.length : 0;
+    });
   }
 
   // Calculate total revenue

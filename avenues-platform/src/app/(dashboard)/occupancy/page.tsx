@@ -47,11 +47,13 @@ const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   return null;
 };
 
-// Calculate z-score for anomaly detection
+// Calculate z-score for anomaly detection (returns 0 when std is 0 to avoid NaN)
 function calculateZScore(values: number[]): number[] {
+  if (values.length === 0) return [];
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
   const std = Math.sqrt(variance);
+  if (std === 0) return values.map(() => 0);
   return values.map((v) => (v - mean) / std);
 }
 
@@ -116,10 +118,16 @@ export default function OccupancyPage() {
 
   const metrics = dashData;
 
-  // Calculate KPIs
-  const avgOccupancy = metrics.pctOccWard ? Object.values(metrics.pctOccWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0) / (Object.keys(metrics.pctOccWard).length * 12) : 0;
+  // Calculate KPIs with division-by-zero guards
+  const wardCount = Object.keys(metrics.pctOccWard).length;
+  const avgOccupancy = wardCount > 0
+    ? Object.values(metrics.pctOccWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0) / (wardCount * 12)
+    : 0;
   const totalPatientDays = Object.values(metrics.patDaysWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0);
-  const midnightCensus = metrics.occMidnight.reduce((a, b) => a + b, 0) / metrics.occMidnight.length;
+  const occMidnightNonZero = metrics.occMidnight.filter(v => v > 0);
+  const midnightCensus = occMidnightNonZero.length > 0
+    ? occMidnightNonZero.reduce((a, b) => a + b, 0) / occMidnightNonZero.length
+    : 0;
 
   // Monthly occupancy data
   const occupancyData: ChartData[] = MONTHS.map((month, idx) => ({
