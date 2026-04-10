@@ -83,6 +83,28 @@ export interface DashboardMetrics {
     medAid: number[];
     batched: number[];
   };
+  // ── All raw columnar data from CSV (column header → 12 monthly values) ──
+  rawColumns: Record<string, number[]>;
+  // ── Additional parsed sections ──
+  discharges: Record<string, number[]>;
+  dischargesPerWard: Record<string, number[]>;
+  patientsAtMidday: Record<string, number[]>;
+  billedPatDays: Record<string, number[]>;
+  cosLocation: Record<string, number[]>;
+  gpEthicalPerLoc: Record<string, number[]>;
+  gpSurgicalPerLoc: Record<string, number[]>;
+  revPerRevCentre: Record<string, number[]>;
+  chargeableItems: Record<string, number[]>;
+  nonChargeableItems: Record<string, number[]>;
+  stockReceiptsDiscount: Record<string, number[]>;
+  stockReceipts: Record<string, number[]>;
+  stockReceiptsValue: Record<string, number[]>;
+  prescriptionsHospital: number[];
+  prescriptionsRetail: number[];
+  prescriptionsRevHospital: number[];
+  prescriptionsRevRetail: number[];
+  dischNotFinalisedValue: number[];
+  accountSundries: number[];
 }
 
 // Location Data Types - Enhanced

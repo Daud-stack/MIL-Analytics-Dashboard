@@ -168,19 +168,53 @@ function splitCSVLine(line: string): string[] {
 
 // ===== PARSING FUNCTIONS =====
 
+/** Helper: create zeroed 12-month array */
+function z12(): number[] { return new Array(12).fill(0); }
+
+/** Helper: create empty DashboardMetrics shell */
+function emptyDashMetrics(year: number): DashboardMetrics {
+  return {
+    year,
+    totalRevenue: 0,
+    monthRevenue: z12(), monthEpisodes: z12(),
+    admCasualty: z12(), admDay: z12(), admInpatient: z12(), admLab: z12(),
+    theatreCases: z12(), theatreMinutes: z12(), theatreUtil: z12(), theatrePctOcc: z12(),
+    pharmacyRx: z12(), pharmacyRev: z12(),
+    occupancyBeds: z12(),
+    patientDays: {}, pctOccWard: {}, patDaysWard: {}, patDaysLOC: {},
+    occMidnight: z12(),
+    revLocation: {}, admPerWard: {},
+    debtRecon: { brought: z12(), revenue: z12(), payments: z12(), sundries: z12(), total: z12() },
+    casToInpatient: z12(), epsFinalised: z12(), dischNotFinalised: z12(),
+    revPerPatDay: z12(), gpEthical: z12(), gpSurgical: z12(),
+    payments: { deposits: z12(), individual: z12(), medAid: z12(), batched: z12() },
+    // New fields
+    rawColumns: {},
+    discharges: {}, dischargesPerWard: {},
+    patientsAtMidday: {}, billedPatDays: {},
+    cosLocation: {}, gpEthicalPerLoc: {}, gpSurgicalPerLoc: {},
+    revPerRevCentre: {},
+    chargeableItems: {}, nonChargeableItems: {},
+    stockReceiptsDiscount: {}, stockReceipts: {}, stockReceiptsValue: {},
+    prescriptionsHospital: z12(), prescriptionsRetail: z12(),
+    prescriptionsRevHospital: z12(), prescriptionsRevRetail: z12(),
+    dischNotFinalisedValue: z12(), accountSundries: z12(),
+  };
+}
+
 /**
  * Parse Dashboard CSV (RptManagementDashboard.csv format)
  *
- * Format: Section-based, row-oriented
+ * Supports COLUMNAR format:
  * Line 1: Facility name (e.g., "Avenues Clinic")
  * Line 2: Report description with date range
- * Line 3: "DataSet,January,February,...,December,Total"
- * Lines 4+: Section headers followed by metric rows
- *   - Section headers are lines with no comma-separated values (e.g., "Admissions")
- *   - Metric rows: "METRIC_NAME,jan,feb,...,dec,total"
+ * Line 3: Column headers — "Date,Admissions-CASUALTY PATIENT,Admissions-DAY PATIENT,..."
+ * Lines 4+: One row per month — "January,758,68,589,..."
+ *
+ * Each column header is "Category-SubItem". Months are rows.
  */
 export function parseDashboardCSV(csvText: string): YearData {
-  const lines = csvText.split('\n').map(l => l.trim());
+  const lines = csvText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
   // Extract facility name and year
   const facilityName = lines[0] || 'Avenues Clinic';
@@ -190,325 +224,229 @@ export function parseDashboardCSV(csvText: string): YearData {
 
   console.log('[Parser] Facility:', facilityName, '| Year:', year);
 
-  // Initialize metrics
-  const metrics: DashboardMetrics = {
-    year,
-    totalRevenue: 0,
-    monthRevenue: new Array(12).fill(0),
-    monthEpisodes: new Array(12).fill(0),
-    admCasualty: new Array(12).fill(0),
-    admDay: new Array(12).fill(0),
-    admInpatient: new Array(12).fill(0),
-    admLab: new Array(12).fill(0),
-    theatreCases: new Array(12).fill(0),
-    theatreMinutes: new Array(12).fill(0),
-    theatreUtil: new Array(12).fill(0),
-    theatrePctOcc: new Array(12).fill(0),
-    pharmacyRx: new Array(12).fill(0),
-    pharmacyRev: new Array(12).fill(0),
-    occupancyBeds: new Array(12).fill(0),
-    patientDays: {},
-    pctOccWard: {},
-    patDaysWard: {},
-    patDaysLOC: {},
-    occMidnight: new Array(12).fill(0),
-    revLocation: {},
-    admPerWard: {},
-    debtRecon: {
-      brought: new Array(12).fill(0),
-      revenue: new Array(12).fill(0),
-      payments: new Array(12).fill(0),
-      sundries: new Array(12).fill(0),
-      total: new Array(12).fill(0),
-    },
-    casToInpatient: new Array(12).fill(0),
-    epsFinalised: new Array(12).fill(0),
-    dischNotFinalised: new Array(12).fill(0),
-    revPerPatDay: new Array(12).fill(0),
-    gpEthical: new Array(12).fill(0),
-    gpSurgical: new Array(12).fill(0),
-    payments: {
-      deposits: new Array(12).fill(0),
-      individual: new Array(12).fill(0),
-      medAid: new Array(12).fill(0),
-      batched: new Array(12).fill(0),
-    },
-  };
+  const metrics = emptyDashMetrics(year);
 
-  /**
-   * Extract 12 monthly values from a CSV row.
-   * Row format: "LABEL,jan,feb,...,dec,total"
-   * Returns array of 12 numbers (indices 0-11).
-   */
-  function getMonthlyValues(fields: string[]): number[] {
-    const vals = new Array(12).fill(0);
-    for (let i = 0; i < 12; i++) {
-      vals[i] = parseNumber(fields[i + 1]); // fields[0] is label, fields[1..12] are months
-    }
-    return vals;
-  }
+  // Parse column headers (line index 2)
+  const headerLine = lines[2] || '';
+  const headers = splitCSVLine(headerLine);
 
-  /** Add monthly values to a target array */
-  function addToArray(target: number[], source: number[]): void {
-    for (let i = 0; i < 12; i++) {
-      target[i] += source[i];
-    }
-  }
-
-  // Track current section context as we parse line by line
-  let currentSection = '';
-  let currentSubSection = '';
-
-  // Parse starting at line 3 (skip facility, description, column headers)
+  // Store ALL raw column data: parse each month row, place value at month index
   for (let lineIdx = 3; lineIdx < lines.length; lineIdx++) {
-    const line = lines[lineIdx];
-    if (!line) continue;
+    const fields = splitCSVLine(lines[lineIdx]);
+    const monthName = (fields[0] || '').trim();
+    const mIdx = getMonthIndex(monthName);
+    if (mIdx < 0) continue; // skip non-month rows (e.g., "Total")
 
-    const fields = splitCSVLine(line);
-    const label = (fields[0] || '').trim();
-    if (!label) {
-      // Empty label but has data values → use current section context
-      // e.g., "Patients Transferred From Casualty To In Patient" section has unlabeled data row
-      if (fields.length > 2 && parseNumber(fields[1]) !== 0) {
-        const vals = getMonthlyValues(fields);
-        const sectionLower = currentSection.toLowerCase();
-        if (sectionLower.includes('transferred') && sectionLower.includes('casualty')) {
-          metrics.casToInpatient = vals;
-        }
-      }
-      continue;
+    for (let col = 1; col < headers.length; col++) {
+      const colName = headers[col]?.trim();
+      if (!colName) continue;
+      if (!metrics.rawColumns[colName]) metrics.rawColumns[colName] = z12();
+      metrics.rawColumns[colName][mIdx] = parseNumber(fields[col]);
     }
+  }
 
-    // Count how many numeric-looking values follow the label
-    let numericCount = 0;
-    for (let i = 1; i < Math.min(fields.length, 14); i++) {
-      const v = fields[i]?.trim();
-      if (v && v !== '' && !isNaN(parseFloat(v.replace(/,/g, '')))) {
-        numericCount++;
-      }
+  console.log('[Parser] Parsed', Object.keys(metrics.rawColumns).length, 'columns across 12 months');
+
+  // ── Map rawColumns into structured metrics ──
+
+  /** Get monthly array for a column by exact name, or return null */
+  function col(name: string): number[] | null {
+    return metrics.rawColumns[name] ?? null;
+  }
+
+  /** Get monthly array, defaulting to z12 */
+  function colZ(name: string): number[] {
+    return metrics.rawColumns[name] ?? z12();
+  }
+
+  // ── Admissions ──
+  metrics.admCasualty = colZ('Admissions-CASUALTY PATIENT');
+  metrics.admDay = colZ('Admissions-DAY PATIENT');
+  metrics.admInpatient = colZ('Admissions-IN-PATIENT');
+  metrics.admLab = colZ('Admissions-LABORATORY');
+
+  // ── Admissions Per Ward ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Admissions Per Ward-')) {
+      metrics.admPerWard[key.replace('Admissions Per Ward-', '')] = vals;
     }
+  }
 
-    // If we have >=6 numeric values after the label, this is a data row
-    const isDataRow = numericCount >= 6 && fields.length >= 7;
-
-    if (!isDataRow) {
-      // This is a section header or sub-section header
-      const labelLower = label.toLowerCase();
-
-      // Check if it's a sub-section within a parent section
-      if (labelLower.includes('patients at midnight') || labelLower.includes('patients at midday') ||
-          labelLower.includes('patients days per ward') || labelLower.includes('percentage occupancy per ward') ||
-          labelLower.includes('patients days per level') || labelLower.includes('billed patient days') ||
-          labelLower.includes('theatre cases') || labelLower.includes('theatre utilization') ||
-          labelLower.includes('percentage occupancy per theatre') ||
-          labelLower.includes('total number of prescriptions') || labelLower.includes('total revenue of prescriptions') ||
-          labelLower.includes('revenue per patient day')) {
-        currentSubSection = label;
-      } else {
-        // Top-level section
-        currentSection = label;
-        currentSubSection = '';
-      }
-      continue;
+  // ── Discharges ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Discharges-')) {
+      metrics.discharges[key.replace('Discharges-', '')] = vals;
     }
+  }
 
-    // ── DATA ROW: extract monthly values ──
-    const vals = getMonthlyValues(fields);
-    const labelLower = label.toLowerCase();
-    const sectionLower = currentSection.toLowerCase();
-    const subSectionLower = currentSubSection.toLowerCase();
-
-    // Skip "Total" and "Average" summary rows for most sections,
-    // but let specific sections handle them (debtors total, GP averages)
-    if (labelLower === 'total' || labelLower === 'average') {
-      // Allow debtors reconciliation "Total" row
-      if (labelLower === 'total' && sectionLower.includes('debtors reconciliation')) {
-        metrics.debtRecon.total = vals;
-      }
-      // Allow GP percentage "Average" rows
-      if (labelLower === 'average' && sectionLower.includes('gp percentage') && sectionLower.includes('ethical')) {
-        metrics.gpEthical = vals;
-      }
-      if (labelLower === 'average' && sectionLower.includes('gp percentage') && sectionLower.includes('surgical')) {
-        metrics.gpSurgical = vals;
-      }
-      continue;
+  // ── Discharges Per Ward ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Discharges Per Ward-')) {
+      metrics.dischargesPerWard[key.replace('Discharges Per Ward-', '')] = vals;
     }
+  }
 
-    // ── ADMISSIONS ──
-    if (sectionLower === 'admissions' && !subSectionLower) {
-      if (labelLower.includes('casualty')) {
-        metrics.admCasualty = vals;
-      } else if (labelLower.includes('day')) {
-        metrics.admDay = vals;
-      } else if (labelLower.includes('in-patient') || labelLower.includes('inpatient') || labelLower.includes('in patient')) {
-        metrics.admInpatient = vals;
-      } else if (labelLower.includes('laboratory')) {
-        metrics.admLab = vals;
-      }
+  // ── Patients Transferred From Casualty To In Patient ──
+  metrics.casToInpatient = colZ('Patients Transferred Fom Casualty To In Patient');
+
+  // ── Patients At Midday Per Ward ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Patients At Midday Per Ward-')) {
+      metrics.patientsAtMidday[key.replace('Patients At Midday Per Ward-', '')] = vals;
     }
+  }
 
-    // ── PATIENTS TRANSFERRED FROM CASUALTY TO IN PATIENT ──
-    else if (sectionLower.includes('transferred') && sectionLower.includes('casualty')) {
-      metrics.casToInpatient = vals;
+  // ── Patients At Midnight Per Ward ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Patients At Midnight Per Ward-')) {
+      const ward = key.replace('Patients At Midnight Per Ward-', '');
+      metrics.patientDays[ward] = vals;
+      for (let i = 0; i < 12; i++) metrics.occMidnight[i] += vals[i];
     }
+  }
 
-    // ── ADMISSIONS PER WARD ──
-    else if (sectionLower.includes('admissions per ward')) {
-      if (!metrics.admPerWard[label]) metrics.admPerWard[label] = new Array(12).fill(0);
-      metrics.admPerWard[label] = vals;
+  // ── Billed Patient Days Per Ward ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Billed Patient Days Per Ward-')) {
+      metrics.billedPatDays[key.replace('Billed Patient Days Per Ward-', '')] = vals;
     }
+  }
 
-    // ── OCCUPANCY: Patients At Midnight Per Ward ──
-    else if (sectionLower === 'occupancy' && subSectionLower.includes('patients at midnight')) {
-      if (!metrics.patientDays[label]) metrics.patientDays[label] = new Array(12).fill(0);
-      metrics.patientDays[label] = vals;
-      // Also accumulate for occMidnight total
-      addToArray(metrics.occMidnight, vals);
+  // ── Patients Days Per Level Of Care ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Patients Days Per Level Of Care-')) {
+      metrics.patDaysLOC[key.replace('Patients Days Per Level Of Care-', '')] = vals;
     }
+  }
 
-    // ── OCCUPANCY: Patients Days Per Ward ──
-    else if (subSectionLower.includes('patients days per ward')) {
-      if (!metrics.patDaysWard[label]) metrics.patDaysWard[label] = new Array(12).fill(0);
-      metrics.patDaysWard[label] = vals;
+  // ── Patients Days Per Ward ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Patients Days Per Ward-')) {
+      metrics.patDaysWard[key.replace('Patients Days Per Ward-', '')] = vals;
     }
+  }
 
-    // ── OCCUPANCY: Percentage Occupancy Per Ward ──
-    else if (subSectionLower.includes('percentage occupancy per ward')) {
-      if (!metrics.pctOccWard[label]) metrics.pctOccWard[label] = new Array(12).fill(0);
-      metrics.pctOccWard[label] = vals;
+  // ── Percentage Occupancy Per Ward ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Percentage Occupancy Per Ward-')) {
+      metrics.pctOccWard[key.replace('Percentage Occupancy Per Ward-', '')] = vals;
     }
+  }
 
-    // ── Patients Days Per Level Of Care ──
-    else if (subSectionLower.includes('patients days per level') || sectionLower.includes('patients days per level')) {
-      if (!metrics.patDaysLOC[label]) metrics.patDaysLOC[label] = new Array(12).fill(0);
-      metrics.patDaysLOC[label] = vals;
+  // ── Theatre ──
+  metrics.theatrePctOcc = colZ('Percentage Occupancy Per Theatre-THEATRE');
+  metrics.theatreCases = colZ('Theatre Cases-THEATRE');
+  metrics.theatreMinutes = colZ('Theatre Utilization-THEATRE');
+  metrics.theatreUtil = metrics.theatreMinutes.map(v => {
+    const avail = 13640;
+    return avail > 0 ? (v / avail) * 100 : 0;
+  });
+
+  // ── Pharmacy ──
+  metrics.prescriptionsHospital = colZ('Number of Prescriptions Dispensed-Hospital');
+  metrics.prescriptionsRetail = colZ('Number of Prescriptions Dispensed-Retail');
+  metrics.pharmacyRx = metrics.prescriptionsHospital.map((v, i) => v + metrics.prescriptionsRetail[i]);
+  metrics.prescriptionsRevHospital = colZ('Revenue of Prescriptions Dispensed-Hospital');
+  metrics.prescriptionsRevRetail = colZ('Revenue of Prescriptions Dispensed-Retail');
+  metrics.pharmacyRev = metrics.prescriptionsRevHospital.map((v, i) => v + metrics.prescriptionsRevRetail[i]);
+
+  // ── Billing Statistics ──
+  metrics.monthRevenue = colZ('Billing Statistics-Total Revenue');
+  metrics.revPerPatDay = colZ('Billing Statistics-Revenue Per Patient Day');
+
+  // ── Revenue Per Stock Location ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Revenue Per Stock Location-')) {
+      metrics.revLocation[key.replace('Revenue Per Stock Location-', '')] = vals;
     }
+  }
 
-    // ── THEATRE STATISTICS: Theatre Cases ──
-    else if (sectionLower.includes('theatre') && subSectionLower.includes('theatre cases')) {
-      if (labelLower === 'theatre') {
-        metrics.theatreCases = vals;
-      }
+  // ── COS Per Stock Location ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('COS Per Stock Location-')) {
+      metrics.cosLocation[key.replace('COS Per Stock Location-', '')] = vals;
     }
+  }
 
-    // ── THEATRE UTILIZATION ──
-    else if (subSectionLower.includes('theatre utilization')) {
-      if (labelLower === 'theatre') {
-        metrics.theatreMinutes = vals;
-        // Calculate utilization % = actual minutes / available minutes per month
-        // Available = ~620 mins/day * ~22 working days = ~13640 mins
-        // But store raw minutes, let UI calculate %
-        metrics.theatreUtil = vals.map(v => {
-          const availableMinutes = 13640; // approximate monthly available minutes
-          return availableMinutes > 0 ? (v / availableMinutes) * 100 : 0;
-        });
-      }
+  // ── GP Percentage For Ethical Stock Items ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('GP Percentage For Ethical Stock Items')) {
+      const loc = key.replace(/^GP Percentage For Ethical Stock Items\s*-\s*/, '');
+      metrics.gpEthicalPerLoc[loc] = vals;
     }
+  }
 
-    // ── PERCENTAGE OCCUPANCY PER THEATRE ──
-    else if (subSectionLower.includes('percentage occupancy per theatre')) {
-      if (labelLower === 'theatre' || labelLower === 'average') {
-        metrics.theatrePctOcc = vals;
-      }
+  // ── GP Percentage For Surgical Stock Items ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('GP Percentage For Surgical Stock Items')) {
+      const loc = key.replace(/^GP Percentage For Surgical Stock Items\s*-\s*/, '');
+      metrics.gpSurgicalPerLoc[loc] = vals;
     }
+  }
 
-    // ── PHARMACY: Total Number of Prescriptions Dispensed ──
-    else if (sectionLower.includes('pharmacy') && subSectionLower.includes('number of prescriptions')) {
-      if (labelLower === 'hospital' || labelLower === 'retail') {
-        addToArray(metrics.pharmacyRx, vals);
-      }
+  // ── Episodes / Discharges Not Finalised ──
+  metrics.epsFinalised = colZ('Episodes Finalised');
+  metrics.dischNotFinalised = colZ('Discharges Not Finalised');
+  metrics.dischNotFinalisedValue = colZ('Discharges Not Finalised Value');
+
+  // ── Revenue Per Revenue Centre ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Revenue Per Revenue Centre-')) {
+      metrics.revPerRevCentre[key.replace('Revenue Per Revenue Centre-', '')] = vals;
     }
+  }
 
-    // ── PHARMACY: Total Revenue of Prescriptions Dispensed ──
-    else if (subSectionLower.includes('revenue of prescriptions')) {
-      if (labelLower === 'hospital' || labelLower === 'retail') {
-        addToArray(metrics.pharmacyRev, vals);
-      }
+  // ── Payments Per Day ──
+  metrics.payments.deposits = colZ('Payments Per Day-Deposits');
+  metrics.payments.individual = colZ('Payments Per Day-Individual Payments');
+  metrics.payments.medAid = colZ('Payments Per Day-Medical Aid Payments');
+  metrics.payments.batched = colZ('Payments Per Day-Batched Payments');
+
+  // ── Account Sundries ──
+  metrics.accountSundries = colZ('Account Sundries');
+
+  // ── Debtors Reconciliation Per Day ──
+  metrics.debtRecon.brought = colZ('Debtors Reconciliation Per Day-Balance Brought Forward');
+  metrics.debtRecon.revenue = colZ('Debtors Reconciliation Per Day-Revenue');
+  metrics.debtRecon.payments = colZ('Debtors Reconciliation Per Day-Payments');
+  metrics.debtRecon.sundries = colZ('Debtors Reconciliation Per Day-SunList');
+  // Calculate total: brought + revenue - payments + sundries
+  metrics.debtRecon.total = z12().map((_, i) =>
+    metrics.debtRecon.brought[i] + metrics.debtRecon.revenue[i] - Math.abs(metrics.debtRecon.payments[i]) + metrics.debtRecon.sundries[i]
+  );
+
+  // ── Chargeable Items Transferred Per Location ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Chargeable Items Transferred Per Location-')) {
+      metrics.chargeableItems[key.replace('Chargeable Items Transferred Per Location-', '')] = vals;
     }
+  }
 
-    // ── BILLING STATISTICS: Total Revenue ──
-    else if (sectionLower.includes('billing statistics')) {
-      if (labelLower.includes('total revenue')) {
-        metrics.monthRevenue = vals;
-        console.log('[Parser] Revenue:', vals);
-      }
+  // ── Non Chargeable Items Transferred Per Location ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Non Chargeable Items Transferred Per Location-')) {
+      metrics.nonChargeableItems[key.replace('Non Chargeable Items Transferred Per Location-', '')] = vals;
     }
+  }
 
-    // ── REVENUE PER PATIENT DAY ──
-    else if (sectionLower.includes('revenue per patient day') || subSectionLower.includes('revenue per patient day')) {
-      metrics.revPerPatDay = vals;
-    }
-
-    // ── REVENUE PER STOCK LOCATION ──
-    else if (sectionLower.includes('revenue per stock location')) {
-      if (!metrics.revLocation[label]) metrics.revLocation[label] = new Array(12).fill(0);
-      metrics.revLocation[label] = vals;
-    }
-
-    // ── COS PER STOCK LOCATION (skip — not in DashboardMetrics) ──
-    else if (sectionLower.includes('cos per stock location')) {
-      // Skip cost of sales data
-    }
-
-    // ── GP PERCENTAGE FOR ETHICAL/SURGICAL STOCK ──
-    // (Average rows handled above in the skip block)
-
-    // ── EPISODES FINALISED ──
-    else if (labelLower.includes('episodes finalised') || labelLower.includes('episodes finalized')) {
-      metrics.epsFinalised = vals;
-    }
-
-    // ── DISCHARGES NOT FINALISED (count, not value) ──
-    else if (labelLower === 'discharges not finalised' || labelLower === 'discharges not finalized') {
-      metrics.dischNotFinalised = vals;
-    }
-
-    // ── REVENUE PER REVENUE CENTRE ──
-    else if (sectionLower.includes('revenue per revenue centre') || sectionLower.includes('revenue per revenue center')) {
-      if (!metrics.revLocation[label]) metrics.revLocation[label] = new Array(12).fill(0);
-      metrics.revLocation[label] = vals;
-    }
-
-    // ── PAYMENTS PER DAY ──
-    else if (sectionLower.includes('payments per day')) {
-      if (labelLower.includes('deposits')) {
-        metrics.payments.deposits = vals;
-      } else if (labelLower.includes('individual')) {
-        metrics.payments.individual = vals;
-      } else if (labelLower.includes('medical aid')) {
-        metrics.payments.medAid = vals;
-      } else if (labelLower.includes('batched')) {
-        metrics.payments.batched = vals;
-      }
-    }
-
-    // ── ACCOUNT SUNDRIES ──
-    else if (sectionLower.includes('account sundries') || labelLower.includes('account sundries')) {
-      // Store in debtRecon.sundries if needed, or skip
-    }
-
-    // ── DEBTORS RECONCILIATION PER DAY ──
-    else if (sectionLower.includes('debtors reconciliation')) {
-      if (labelLower.includes('balance brought forward') || labelLower.includes('brought forward')) {
-        metrics.debtRecon.brought = vals;
-      } else if (labelLower === 'revenue') {
-        metrics.debtRecon.revenue = vals;
-      } else if (labelLower === 'payments') {
-        metrics.debtRecon.payments = vals;
-      } else if (labelLower === 'sundries') {
-        metrics.debtRecon.sundries = vals;
-      }
+  // ── Stock Receipts ──
+  for (const [key, vals] of Object.entries(metrics.rawColumns)) {
+    if (key.startsWith('Stock Receipts Discount Per Location-')) {
+      metrics.stockReceiptsDiscount[key.replace('Stock Receipts Discount Per Location-', '')] = vals;
+    } else if (key.startsWith('Stock Receipts Value Per Location-')) {
+      metrics.stockReceiptsValue[key.replace('Stock Receipts Value Per Location-', '')] = vals;
+    } else if (key.startsWith('Stock Receipts Per Location-')) {
+      metrics.stockReceipts[key.replace('Stock Receipts Per Location-', '')] = vals;
     }
   }
 
   // ── Post-processing ──
 
   // monthEpisodes: use epsFinalised if available, else sum admissions
-  metrics.monthEpisodes = metrics.monthEpisodes.map((value, idx) => {
+  metrics.monthEpisodes = z12().map((_, idx) => {
     if (metrics.epsFinalised[idx] > 0) return metrics.epsFinalised[idx];
     const admSum = metrics.admCasualty[idx] + metrics.admDay[idx] + metrics.admInpatient[idx] + metrics.admLab[idx];
-    return admSum > 0 ? admSum : value;
+    return admSum > 0 ? admSum : 0;
   });
 
   // Copy patDaysWard → patientDays if patientDays is empty
@@ -521,8 +459,24 @@ export function parseDashboardCSV(csvText: string): YearData {
     metrics.occupancyBeds = Array.from({ length: 12 }, (_, idx) => {
       const wards = Object.values(metrics.pctOccWard);
       const nonZeroWards = wards.filter(w => (w[idx] || 0) > 0);
-      const sum = nonZeroWards.reduce((acc, wardValues) => acc + (wardValues[idx] || 0), 0);
+      const sum = nonZeroWards.reduce((acc, wv) => acc + (wv[idx] || 0), 0);
       return nonZeroWards.length > 0 ? sum / nonZeroWards.length : 0;
+    });
+  }
+
+  // GP averages (average across all locations)
+  const ethVals = Object.values(metrics.gpEthicalPerLoc);
+  if (ethVals.length) {
+    metrics.gpEthical = z12().map((_, i) => {
+      const nonZero = ethVals.filter(v => (v[i] || 0) > 0);
+      return nonZero.length ? nonZero.reduce((s, v) => s + v[i], 0) / nonZero.length : 0;
+    });
+  }
+  const surVals = Object.values(metrics.gpSurgicalPerLoc);
+  if (surVals.length) {
+    metrics.gpSurgical = z12().map((_, i) => {
+      const nonZero = surVals.filter(v => (v[i] || 0) > 0);
+      return nonZero.length ? nonZero.reduce((s, v) => s + v[i], 0) / nonZero.length : 0;
     });
   }
 

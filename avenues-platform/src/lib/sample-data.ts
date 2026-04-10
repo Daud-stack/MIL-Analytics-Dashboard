@@ -217,6 +217,20 @@ export function generateSampleDashboardMetrics(year: number): DashboardMetrics {
     gpEthical,
     gpSurgical,
     payments,
+    // New fields (empty for sample data)
+    rawColumns: {},
+    discharges: {}, dischargesPerWard: {},
+    patientsAtMidday: {}, billedPatDays: {},
+    cosLocation: {}, gpEthicalPerLoc: {}, gpSurgicalPerLoc: {},
+    revPerRevCentre: {},
+    chargeableItems: {}, nonChargeableItems: {},
+    stockReceiptsDiscount: {}, stockReceipts: {}, stockReceiptsValue: {},
+    prescriptionsHospital: [...Array(12)].map(() => 0),
+    prescriptionsRetail: [...Array(12)].map(() => 0),
+    prescriptionsRevHospital: [...Array(12)].map(() => 0),
+    prescriptionsRevRetail: [...Array(12)].map(() => 0),
+    dischNotFinalisedValue: [...Array(12)].map(() => 0),
+    accountSundries: [...Array(12)].map(() => 0),
   };
 }
 
