@@ -10,7 +10,7 @@ export interface StatCardProps {
   change?: number;
   icon?: LucideIcon;
   trend?: 'up' | 'down' | 'neutral';
-  color?: 'teal' | 'blue' | 'green' | 'amber' | 'rose' | 'red' | 'violet' | 'purple' | 'yellow';
+  color?: 'teal' | 'blue' | 'green' | 'amber' | 'rose' | 'red' | 'violet' | 'purple' | 'yellow' | 'slate' | 'orange' | 'cyan' | 'emerald';
   subtitle?: string;
   loading?: boolean;
 }
@@ -42,6 +42,10 @@ export const StatCard: React.FC<StatCardProps> = ({
       violet: 'border-l-violet-600',
       purple: 'border-l-purple-600',
       yellow: 'border-l-yellow-600',
+      slate: 'border-l-slate-600',
+      orange: 'border-l-orange-600',
+      cyan: 'border-l-cyan-600',
+      emerald: 'border-l-emerald-600',
     };
     return colors[color] || colors.teal;
   };
@@ -57,6 +61,10 @@ export const StatCard: React.FC<StatCardProps> = ({
       violet: 'bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-400',
       purple: 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
       yellow: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-400',
+      slate: 'bg-slate-50 text-slate-600 dark:bg-slate-900/20 dark:text-slate-400',
+      orange: 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400',
+      cyan: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-900/20 dark:text-cyan-400',
+      emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400',
     };
     return colors[color] || colors.teal;
   };
