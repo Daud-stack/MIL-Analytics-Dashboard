@@ -19,9 +19,11 @@ import {
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
-import { ChartTooltipProps, MONTHS } from '@/types';
+import { ChartTooltipProps } from '@/types';
 import { formatCurrency, formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useClaims } from '@/store';
+import { useDrillDown } from '@/hooks/useDrillDown';
+import { useFilterStore } from '@/store/filter';
 
 const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7', '#059669', '#dc2626'];
 
@@ -48,6 +50,14 @@ const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
 export default function ClaimsPage() {
   const [sortBy, setSortBy] = useState<'amount' | 'count'>('amount');
   const claims = useClaims();
+  const { granularity } = useFilterStore();
+
+  // Drill-down hooks for monthly data
+  const submittedDrill = useDrillDown(claims?.totalClaims_monthly);
+  const approvedDrill = useDrillDown(claims?.approvedClaims_monthly);
+  const rejectedDrill = useDrillDown(claims?.rejectedClaims_monthly);
+  const pendingDrill = useDrillDown(claims?.pendingClaims_monthly);
+  const amountsDrill = useDrillDown(claims?.claimAmounts_monthly);
 
   if (!claims) {
     return (
@@ -64,14 +74,27 @@ export default function ClaimsPage() {
     );
   }
 
-  // Monthly comparison data
-  const monthlyData = MONTHS.map((month, idx) => ({
-    month: month.substring(0, 3),
-    submitted: claims.totalClaims_monthly[idx],
-    approved: claims.approvedClaims_monthly[idx],
-    rejected: claims.rejectedClaims_monthly[idx],
-    pending: claims.pendingClaims_monthly[idx],
+  // Monthly comparison data with drill-down
+  const monthlyData = submittedDrill.labels.map((label, i) => ({
+    period: label,
+    submitted: submittedDrill.values[i],
+    approved: approvedDrill.values[i],
+    rejected: rejectedDrill.values[i],
+    pending: pendingDrill.values[i],
   }));
+
+  // Monthly claim amount trend with drill-down
+  const amountTrendData = amountsDrill.labels.map((label, i) => ({
+    period: label,
+    amount: amountsDrill.values[i],
+  }));
+
+  // Period label for subtitle
+  const periodLabel = granularity === 'year' ? 'Annual'
+    : granularity === 'quarter' ? 'Quarter'
+    : granularity === 'week' ? 'Weekly'
+    : granularity === 'day' ? 'Daily'
+    : submittedDrill.isFiltered ? 'Period' : 'Monthly';
 
   // Claims by medical aid
   const schemeData = Object.entries(claims.byScheme)
@@ -99,12 +122,6 @@ export default function ClaimsPage() {
     }))
     .sort((a, b) => b.value - a.value);
 
-  // Monthly claim amount trend
-  const amountTrendData = MONTHS.map((month, idx) => ({
-    month: month.substring(0, 3),
-    amount: claims.claimAmounts_monthly[idx],
-  }));
-
   // Top doctors by claims
   const doctorsData = Object.entries(claims.byDoctor)
     .map(([name, data]) => ({
@@ -130,11 +147,13 @@ export default function ClaimsPage() {
     })
     .sort((a, b) => b.submitted - a.submitted);
 
-  // Calculations
-  const totalClaims = claims.totalClaims;
-  const totalClaimed = claims.totalClaimed;
-  const approvalRate = (claims.approved / claims.totalClaims) * 100;
-  const rejectionRate = (claims.rejected / claims.totalClaims) * 100;
+  // Calculations using drill-down totals
+  const totalClaims = submittedDrill.total;
+  const totalClaimed = amountsDrill.total;
+  const totalApproved = approvedDrill.total;
+  const totalRejected = rejectedDrill.total;
+  const approvalRate = totalClaims > 0 ? (totalApproved / totalClaims) * 100 : 0;
+  const rejectionRate = totalClaims > 0 ? (totalRejected / totalClaims) * 100 : 0;
   const avgProcessingDays = 10; // Typical healthcare claim
 
   const handleExportClaims = () => {
@@ -145,7 +164,7 @@ export default function ClaimsPage() {
       { metric: 'Rejection Rate %', value: rejectionRate.toFixed(1) },
       { metric: 'Avg Processing Days', value: avgProcessingDays },
       ...monthlyData.map((d) => ({
-        metric: `${d.month} - Submitted`,
+        metric: `${d.period} - Submitted`,
         value: formatNumber(d.submitted),
       })),
     ];
@@ -182,7 +201,10 @@ export default function ClaimsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Claims Processing Analytics</h1>
-          <p className="mt-1 text-sm text-gray-500">Medical aid claims status and performance</p>
+          <p className="mt-1 text-sm text-gray-500">
+            Medical aid claims status and performance
+            {submittedDrill.isFiltered && ` (${periodLabel} view)`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={handleExportClaims} variant="outline" size="sm" className="gap-2">
@@ -231,14 +253,14 @@ export default function ClaimsPage() {
         {/* Monthly Claims Comparison */}
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-gray-900">Monthly Claims Comparison</h2>
+            <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Claims Comparison</h2>
             <p className="mt-1 text-xs text-gray-500">Submitted, approved, rejected, and pending</p>
           </div>
           <div className="px-5 pb-5">
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={monthlyData}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} interval={monthlyData.length > 12 ? Math.floor(monthlyData.length / 6) : 0} />
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
@@ -346,14 +368,14 @@ export default function ClaimsPage() {
       {/* Charts Row 3 */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 px-5 py-4">
-          <h2 className="text-sm font-semibold text-gray-900">Monthly Claim Amount Trend</h2>
+          <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Claim Amount Trend</h2>
           <p className="mt-1 text-xs text-gray-500">Total value of claims submitted</p>
         </div>
         <div className="px-5 pb-5">
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={amountTrendData}>
               <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-              <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} interval={amountTrendData.length > 12 ? Math.floor(amountTrendData.length / 6) : 0} />
               <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Line

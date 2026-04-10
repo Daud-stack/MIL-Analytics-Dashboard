@@ -1,42 +1,40 @@
 #!/usr/bin/env tsx
 /**
- * Avenues Clinic — Automated CSV File Watcher
+ * Avenues Clinic — Automated CSV File Watcher (API-based)
  *
- * Monitors `./uploads` for new .csv files, auto-parses them using the
- * existing detection + parsing logic, stores results in `data/ingested.json`,
- * and moves processed files to `./archived`.
+ * Monitors a configurable directory for new .csv files, auto-parses them using
+ * the existing detection + parsing logic, and POSTs parsed data directly to the
+ * Vercel API at /api/data/ingest using machine-to-machine authentication.
  *
  * Duplicate prevention: SHA-256 hash of each file is checked before processing.
  * If the same file content has already been ingested, it is skipped and archived.
+ *
+ * Processed files are moved to the archive directory.
  *
  * Usage:
  *   npx tsx scripts/file-watcher.ts
  *   # or via npm script:
  *   npm run watch:files
  *
- * Environment variables:
+ * Environment variables (.env.watcher):
+ *   API_URL      — Vercel deployment URL (default: https://mil-analytics-dashboard.vercel.app)
+ *   INGEST_API_KEY  — API key for authentication (required)
+ *   ORG_ID       — Organization ID (required)
  *   WATCH_DIR    — directory to monitor (default: ./uploads)
  *   ARCHIVE_DIR  — where processed files go (default: ./archived)
- *   POLL_MS      — polling interval in ms, useful for network drives (default: 2000)
+ *   POLL_MS      — polling interval in ms (default: 2000)
  */
 
+import 'dotenv/config';
+import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+
+// Load .env.watcher if it exists (overrides .env)
+dotenv.config({ path: path.resolve(process.cwd(), '.env.watcher'), override: true });
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const chokidar = require('chokidar');
-import {
-  readIngestStore,
-  writeIngestStore,
-  hashFile,
-  isDuplicate,
-  recordProcessed,
-  type IngestLogEntry,
-} from '../src/lib/ingest-store';
-
-// ── Inline parsers (we can't import client-side modules directly,
-//    so we import the shared parsing logic) ──
-// The parsers use 'use client' directive but the actual logic is pure JS.
-// We strip the directive at runtime — tsx handles this.
 
 import {
   parseDashboardCSV,
@@ -46,11 +44,39 @@ import {
 
 import { parseGenericCSV } from '../src/lib/generic-parser';
 
-// ── Config ──
+// ── Configuration ──
 
+const API_URL = (process.env.API_URL || 'https://mil-analytics-dashboard.vercel.app').replace(/\/$/, '');
+const INGEST_API_KEY = process.env.INGEST_API_KEY;
+const ORG_ID = process.env.ORG_ID;
 const WATCH_DIR = path.resolve(process.env.WATCH_DIR || './uploads');
 const ARCHIVE_DIR = path.resolve(process.env.ARCHIVE_DIR || './archived');
 const POLL_MS = parseInt(process.env.POLL_MS || '2000', 10);
+const API_RETRY_COUNT = 3;
+const API_RETRY_DELAY_MS = 5000;
+
+// ── Validate required environment variables ──
+
+function validateConfig(): void {
+  const errors: string[] = [];
+
+  if (!INGEST_API_KEY) {
+    errors.push('INGEST_API_KEY environment variable is required');
+  }
+
+  if (!ORG_ID) {
+    errors.push('ORG_ID environment variable is required');
+  }
+
+  if (errors.length > 0) {
+    console.error('\n❌ Configuration error:');
+    errors.forEach(err => console.error(`   ${err}`));
+    console.error('\n📝 Set these in .env.watcher or as environment variables.\n');
+    process.exit(1);
+  }
+}
+
+validateConfig();
 
 // ── Ensure directories exist ──
 
@@ -63,6 +89,13 @@ function ensureDir(dir: string): void {
 
 ensureDir(WATCH_DIR);
 ensureDir(ARCHIVE_DIR);
+
+// ── SHA-256 Hash Computation ──
+
+function computeHash(filePath: string): string {
+  const buffer = fs.readFileSync(filePath);
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
 
 // ── File type detection (mirrors upload/page.tsx logic) ──
 
@@ -116,6 +149,60 @@ function detectFileType(csvText: string, fileName: string): 'Dashboard' | 'Locat
   return 'Generic';
 }
 
+// ── POST to API with retry logic ──
+
+async function postToAPI(
+  fileType: 'Dashboard' | 'Location' | 'Claims' | 'Generic',
+  data: Record<string, unknown>,
+  year: number,
+  fileName: string,
+  sha256: string,
+  attempt: number = 1
+): Promise<{ success: boolean; duplicate?: boolean; error?: string }> {
+  try {
+    const body = {
+      year,
+      fileType: fileType === 'Generic' ? 'Dashboard' : fileType,
+      data,
+      fileName,
+      sha256,
+    };
+
+    const response = await fetch(`${API_URL}/api/data/ingest`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': INGEST_API_KEY!,
+        'X-Org-Id': ORG_ID!,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API returned ${response.status}: ${errorText}`);
+    }
+
+    const result = await response.json();
+    return { success: true, duplicate: result.duplicate };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+
+    if (attempt < API_RETRY_COUNT) {
+      console.warn(
+        `   ⚠️  Attempt ${attempt}/${API_RETRY_COUNT} failed: ${message}. Retrying in ${API_RETRY_DELAY_MS}ms...`
+      );
+      await new Promise(resolve => setTimeout(resolve, API_RETRY_DELAY_MS));
+      return postToAPI(fileType, data, year, fileName, sha256, attempt + 1);
+    }
+
+    return {
+      success: false,
+      error: `API call failed after ${API_RETRY_COUNT} attempts: ${message}`,
+    };
+  }
+}
+
 // ── Process a single CSV file ──
 
 async function processFile(filePath: string): Promise<void> {
@@ -133,26 +220,21 @@ async function processFile(filePath: string): Promise<void> {
   // Step 1: Hash the file for duplicate detection
   let sha256: string;
   try {
-    sha256 = hashFile(filePath);
+    sha256 = computeHash(filePath);
+    console.log(`   SHA-256: ${sha256.substring(0, 12)}...`);
   } catch (err) {
     console.error(`❌ Could not read file: ${fileName}`, err);
+    archiveFile(filePath, fileName, '_error');
     return;
   }
 
-  // Step 2: Check for duplicates
-  const store = readIngestStore();
-  if (isDuplicate(store, sha256)) {
-    console.log(`⚠️  DUPLICATE detected (same SHA-256 hash). Skipping: ${fileName}`);
-    archiveFile(filePath, fileName, '_dup');
-    return;
-  }
-
-  // Step 3: Read file content
+  // Step 2: Read file content
   let csvText: string;
   try {
     csvText = fs.readFileSync(filePath, 'utf-8');
   } catch (err) {
     console.error(`❌ Could not read file content: ${fileName}`, err);
+    archiveFile(filePath, fileName, '_error');
     return;
   }
 
@@ -162,54 +244,55 @@ async function processFile(filePath: string): Promise<void> {
     return;
   }
 
-  // Step 4: Detect file type
+  // Step 3: Detect file type
   const fileType = detectFileType(csvText, fileName);
   console.log(`   Type detected: ${fileType}`);
 
-  // Step 5: Parse
+  // Step 4: Parse
   let yearData: Record<string, unknown> | null = null;
   let year = new Date().getFullYear();
-  let rowCount = 0;
 
   try {
     switch (fileType) {
       case 'Dashboard': {
         const result = parseDashboardCSV(csvText);
         year = result.year;
-        yearData = JSON.parse(JSON.stringify(result)) as Record<string, unknown>;
-        rowCount = Object.keys(result.dashboard?.rawColumns || {}).length;
+        yearData = {
+          dashboard: result.dashboard,
+          year: result.year,
+        };
         break;
       }
       case 'Location': {
         const result = parseLocationCSV(csvText);
         year = result.year;
-        yearData = JSON.parse(JSON.stringify(result)) as Record<string, unknown>;
-        rowCount = (result.location as { episodes?: number } | null)?.episodes || 0;
+        yearData = {
+          location: result.location,
+          year: result.year,
+        };
         break;
       }
       case 'Claims': {
         const result = parseClaimsCSV(csvText);
         year = result.year;
-        yearData = JSON.parse(JSON.stringify(result)) as Record<string, unknown>;
+        yearData = {
+          claims: result.claims,
+          year: result.year,
+        };
         break;
       }
       case 'Generic': {
         const result = parseGenericCSV(csvText, fileName);
         yearData = {
-          year,
-          dash: null, dashboard: null,
-          loc: null, location: null,
-          apac: null, claims: null,
-          uploads: [],
           datasets: { [result.id]: result },
+          year,
         };
-        rowCount = result.rowCount;
         break;
       }
     }
   } catch (err) {
     console.error(`❌ Parse error for ${fileName}:`, err);
-    archiveFile(filePath, fileName, '_error');
+    archiveFile(filePath, fileName, '_parse_error');
     return;
   }
 
@@ -219,40 +302,41 @@ async function processFile(filePath: string): Promise<void> {
     return;
   }
 
-  // Step 6: Add upload record to yearData
-  const uploadRecord = {
-    id: sha256.substring(0, 12),
-    fileName,
-    category: fileType,
-    uploadedAt: new Date().toISOString(),
-    recordCount: rowCount,
-    year,
-    sha256,
-    source: 'auto-ingest',
-  };
+  // Step 5: POST to API
+  console.log(`   Posting to ${API_URL}/api/data/ingest...`);
 
-  if (Array.isArray(yearData.uploads)) {
-    (yearData.uploads as unknown[]).push(uploadRecord);
+  // For Generic files, use the datasets object directly
+  let dataToSend: Record<string, unknown>;
+  if (fileType === 'Generic') {
+    dataToSend = yearData.datasets as Record<string, unknown>;
   } else {
-    yearData.uploads = [uploadRecord];
+    // For Dashboard/Location/Claims, send the specific field value
+    if (fileType === 'Dashboard') {
+      dataToSend = yearData.dashboard as Record<string, unknown>;
+    } else if (fileType === 'Location') {
+      dataToSend = yearData.location as Record<string, unknown>;
+    } else {
+      dataToSend = yearData.claims as Record<string, unknown>;
+    }
   }
 
-  // Step 7: Record in ingest store
-  const logEntry: IngestLogEntry = {
-    fileName,
-    sha256,
-    fileType,
-    year,
-    processedAt: new Date().toISOString(),
-    rowCount,
-  };
+  const apiResult = await postToAPI(fileType, dataToSend, year, fileName, sha256);
 
-  recordProcessed(store, logEntry, yearData);
-  writeIngestStore(store);
+  if (!apiResult.success) {
+    console.error(`❌ ${apiResult.error}`);
+    archiveFile(filePath, fileName, '_api_error');
+    return;
+  }
 
-  console.log(`✅ Ingested: ${fileName} → year ${year} (${fileType}, ${rowCount} records)`);
+  if (apiResult.duplicate) {
+    console.log(`⚠️  DUPLICATE detected. File already processed (same hash).`);
+    archiveFile(filePath, fileName, '_dup');
+    return;
+  }
 
-  // Step 8: Archive the processed file
+  console.log(`✅ Ingested: ${fileName} → year ${year} (${fileType})`);
+
+  // Step 6: Archive the processed file
   archiveFile(filePath, fileName);
 }
 
@@ -263,11 +347,11 @@ function archiveFile(filePath: string, fileName: string, suffix = ''): void {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
     const archiveName = `${timestamp}_${fileName}${suffix ? suffix : ''}`;
     const archivePath = path.join(ARCHIVE_DIR, archiveName);
+
     fs.renameSync(filePath, archivePath);
     console.log(`📦 Archived: ${archiveName}`);
   } catch (err) {
-    console.error(`⚠️  Could not archive ${fileName}:`, err);
-    // Try copy + delete as fallback (cross-device)
+    // Try copy + delete as fallback (cross-device move on network drives)
     try {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
       const archiveName = `${timestamp}_${fileName}${suffix ? suffix : ''}`;
@@ -296,35 +380,42 @@ async function processExistingFiles(): Promise<void> {
 // ── Start the watcher ──
 
 console.log('╔══════════════════════════════════════════════════════╗');
-console.log('║   Avenues Clinic — CSV File Watcher                 ║');
+console.log('║   Avenues Clinic — CSV File Watcher (API Mode)       ║');
 console.log('╠══════════════════════════════════════════════════════╣');
-console.log(`║  Watching: ${WATCH_DIR.padEnd(41)}║`);
-console.log(`║  Archive:  ${ARCHIVE_DIR.padEnd(41)}║`);
-console.log(`║  Poll:     ${String(POLL_MS + 'ms').padEnd(41)}║`);
+console.log(`║  API URL:  ${API_URL.substring(0, 45).padEnd(45)}║`);
+console.log(`║  Org ID:   ${ORG_ID!.substring(0, 45).padEnd(45)}║`);
+console.log(`║  Watching: ${WATCH_DIR.substring(0, 45).padEnd(45)}║`);
+console.log(`║  Archive:  ${ARCHIVE_DIR.substring(0, 45).padEnd(45)}║`);
+console.log(`║  Poll:     ${String(POLL_MS + 'ms').padEnd(45)}║`);
 console.log('╚══════════════════════════════════════════════════════╝');
 
 // Process any files already in the directory
-processExistingFiles().then(() => {
-  // Set up chokidar to watch for new files
-  const watcher = chokidar.watch(path.join(WATCH_DIR, '*.csv'), {
-    persistent: true,
-    ignoreInitial: true,       // We already processed existing files above
-    awaitWriteFinish: {
-      stabilityThreshold: 1500, // Wait 1.5s after last write before processing
-      pollInterval: 500,
-    },
-    usePolling: true,           // More reliable on network drives / OneDrive
-    interval: POLL_MS,
-  });
-
-  watcher
-    .on('add', (filePath: string) => {
-      console.log(`\n🆕 New file detected: ${path.basename(filePath)}`);
-      processFile(filePath);
-    })
-    .on('error', (error: Error) => {
-      console.error('❌ Watcher error:', error);
+processExistingFiles()
+  .then(() => {
+    // Set up chokidar to watch for new files
+    const watcher = chokidar.watch(path.join(WATCH_DIR, '*.csv'), {
+      persistent: true,
+      ignoreInitial: true, // We already processed existing files above
+      awaitWriteFinish: {
+        stabilityThreshold: 1500, // Wait 1.5s after last write before processing
+        pollInterval: 500,
+      },
+      usePolling: true, // More reliable on network drives / OneDrive
+      interval: POLL_MS,
     });
 
-  console.log('\n👀 Watching for new CSV files... (Ctrl+C to stop)\n');
-});
+    watcher
+      .on('add', (filePath: string) => {
+        console.log(`\n🆕 New file detected: ${path.basename(filePath)}`);
+        processFile(filePath);
+      })
+      .on('error', (error: Error) => {
+        console.error('❌ Watcher error:', error);
+      });
+
+    console.log('\n👀 Watching for new CSV files... (Ctrl+C to stop)\n');
+  })
+  .catch(err => {
+    console.error('❌ Failed to process existing files:', err);
+    process.exit(1);
+  });

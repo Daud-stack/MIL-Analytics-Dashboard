@@ -19,17 +19,11 @@ import {
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
-import { ChartTooltipProps, MONTHS } from '@/types';
+import { ChartTooltipProps } from '@/types';
 import { formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useDashboard } from '@/store';
-
-interface ChartData {
-  month: string;
-  occupancy?: number;
-  patientDays?: number;
-  midnight?: number;
-  ma?: number;
-}
+import { useDrillDown, useDrillDownRecord } from '@/hooks/useDrillDown';
+import { useFilterStore } from '@/store/filter';
 
 const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (active && payload && payload.length) {
@@ -57,49 +51,16 @@ function calculateZScore(values: number[]): number[] {
   return values.map((v) => (v - mean) / std);
 }
 
-const monthlyOccupancyData = [
-  { month: 'Jan', occupancy: 68, patientDays: 4523, benchmark: 75 },
-  { month: 'Feb', occupancy: 72, patientDays: 4312, benchmark: 75 },
-  { month: 'Mar', occupancy: 78, patientDays: 4756, benchmark: 75 },
-  { month: 'Apr', occupancy: 76, patientDays: 4894, benchmark: 75 },
-  { month: 'May', occupancy: 82, patientDays: 5126, benchmark: 75 },
-  { month: 'Jun', occupancy: 85, patientDays: 5342, benchmark: 75 },
-  { month: 'Jul', occupancy: 88, patientDays: 5501, benchmark: 75 },
-  { month: 'Aug', occupancy: 86, patientDays: 5378, benchmark: 75 },
-  { month: 'Sep', occupancy: 81, patientDays: 5123, benchmark: 75 },
-  { month: 'Oct', occupancy: 75, patientDays: 4876, benchmark: 75 },
-  { month: 'Nov', occupancy: 70, patientDays: 4654, benchmark: 75 },
-  { month: 'Dec', occupancy: 76, patientDays: 4832, benchmark: 75 },
-];
-
-const wardOccupancyData = [
-  { ward: 'ICU', beds: 32, occupied: 28, occupancy: 88 },
-  { ward: 'Cardiology', beds: 48, occupied: 36, occupancy: 75 },
-  { ward: 'General Ward', beds: 64, occupied: 41, occupancy: 64 },
-  { ward: 'Orthopedics', beds: 40, occupied: 27, occupancy: 67 },
-  { ward: 'Obstetrics', beds: 28, occupied: 21, occupancy: 76 },
-  { ward: 'Pediatrics', beds: 28, occupied: 15, occupancy: 52 },
-  { ward: 'Gynecology', beds: 22, occupied: 13, occupancy: 61 },
-  { ward: 'Surgery Recovery', beds: 20, occupied: 13, occupancy: 65 },
-];
-
-const yoyOccupancyData = [
-  { month: 'Jan', year2024: 68, year2025: 70, year2026: 72 },
-  { month: 'Feb', year2024: 72, year2025: 74, year2026: 75 },
-  { month: 'Mar', year2024: 78, year2025: 80, year2026: 81 },
-  { month: 'Apr', year2024: 76, year2025: 78, year2026: 79 },
-  { month: 'May', year2024: 82, year2025: 83, year2026: 84 },
-  { month: 'Jun', year2024: 85, year2025: 86, year2026: 87 },
-  { month: 'Jul', year2024: 88, year2025: 89, year2026: 90 },
-  { month: 'Aug', year2024: 86, year2025: 87, year2026: 88 },
-  { month: 'Sep', year2024: 81, year2025: 82, year2026: 83 },
-  { month: 'Oct', year2024: 75, year2025: 76, year2026: 77 },
-  { month: 'Nov', year2024: 70, year2025: 71, year2026: 72 },
-  { month: 'Dec', year2024: 76, year2025: 77, year2026: 78 },
-];
-
 export default function OccupancyPage() {
   const dashData = useDashboard();
+  const { granularity } = useFilterStore();
+
+  // Initialize drill-down hooks
+  const midnightDrill = useDrillDown(dashData?.occMidnight);
+  const theatreOccDrill = useDrillDown(dashData?.theatrePctOcc);
+  const pctOccWardDrill = useDrillDownRecord(dashData?.pctOccWard);
+  const patDaysWardDrill = useDrillDownRecord(dashData?.patDaysWard);
+  const patDaysLOCDrill = useDrillDownRecord(dashData?.patDaysLOC);
 
   if (!dashData) {
     return (
@@ -116,54 +77,40 @@ export default function OccupancyPage() {
     );
   }
 
-  const metrics = dashData;
-
-  // Calculate KPIs with division-by-zero guards
-  const wardCount = Object.keys(metrics.pctOccWard).length;
+  // Calculate KPIs from drill-down totals
+  const wardCount = pctOccWardDrill.size;
   const avgOccupancy = wardCount > 0
-    ? Object.values(metrics.pctOccWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0) / (wardCount * 12)
+    ? Array.from(pctOccWardDrill.values()).reduce((sum, dd) => sum + dd.average, 0) / wardCount
     : 0;
-  const totalPatientDays = Object.values(metrics.patDaysWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0);
-  const occMidnightNonZero = metrics.occMidnight.filter(v => v > 0);
-  const midnightCensus = occMidnightNonZero.length > 0
-    ? occMidnightNonZero.reduce((a, b) => a + b, 0) / occMidnightNonZero.length
-    : 0;
+  const totalPatientDays = Array.from(patDaysWardDrill.values()).reduce((sum, dd) => sum + dd.total, 0);
+  const midnightActive = midnightDrill.values.filter(v => v > 0).length || 1;
+  const midnightCensus = midnightDrill.total / midnightActive;
 
-  // Monthly occupancy data
-  const occupancyData: ChartData[] = MONTHS.map((month, idx) => ({
-    month: month.substring(0, 3),
-    occupancy: metrics.theatrePctOcc[idx],
-    patientDays: metrics.patDaysWard['General Ward']?.[idx] || 0,
+  // Occupancy trend data
+  const occupancyData = theatreOccDrill.labels.map((label, i) => ({
+    period: label,
+    occupancy: theatreOccDrill.values[i],
   }));
 
-  // Moving average overlay for midnight census
-  const midnightData: ChartData[] = MONTHS.map((month, idx) => ({
-    month: month.substring(0, 3),
-    midnight: metrics.occMidnight[idx],
-  }));
-
-  // Add 3-month moving average
-  const withMA = midnightData.map((d, i) => ({
-    ...d,
-    ma: i < 2
-      ? metrics.occMidnight[i]
-      : (metrics.occMidnight[i] + metrics.occMidnight[i - 1] + metrics.occMidnight[i - 2]) / 3,
+  // Midnight census with 3-month moving average
+  const withMA = midnightDrill.labels.map((label, i) => ({
+    period: label,
+    midnight: midnightDrill.values[i],
+    ma: i < 2 ? midnightDrill.values[i]
+      : (midnightDrill.values[i] + midnightDrill.values[i - 1] + midnightDrill.values[i - 2]) / 3,
   }));
 
   // Patient days by LOC
-  const locData = Object.entries(metrics.patDaysLOC)
-    .map(([loc, values]) => ({
-      name: loc,
-      patientDays: values.reduce((a, b) => a + b, 0),
-    }))
+  const locData = Array.from(patDaysLOCDrill.entries())
+    .map(([name, dd]) => ({ name, patientDays: dd.total }))
     .sort((a, b) => b.patientDays - a.patientDays);
 
   // Ward occupancy detail table with z-score anomaly detection
-  const wardOccupancies = Object.entries(metrics.pctOccWard).map(([ward, values]) => ({
+  const wardOccupancies = Array.from(pctOccWardDrill.entries()).map(([ward, dd]) => ({
     ward,
-    occupancy: values.reduce((a, b) => a + b, 0) / values.length,
-    min: Math.min(...values),
-    max: Math.max(...values),
+    occupancy: dd.average,
+    min: Math.min(...dd.values),
+    max: Math.max(...dd.values),
   }));
 
   const zScores = calculateZScore(wardOccupancies.map((w) => w.occupancy));
@@ -173,17 +120,27 @@ export default function OccupancyPage() {
     isAnomaly: Math.abs(zScores[i]) > 1.5,
   }));
 
-  // Heatmap data (12 months x wards)
-  const heatmapData = Object.entries(metrics.pctOccWard).map(([ward, values]) => ({
+  // Heatmap data - use drill-down labels for columns
+  const heatmapData = Array.from(pctOccWardDrill.entries()).map(([ward, dd]) => ({
     ward,
-    values: values.map((v) => v),
+    values: dd.values,
   }));
+
+  const heatmapHeaders = pctOccWardDrill.size > 0
+    ? Array.from(pctOccWardDrill.values())[0].labels
+    : [];
 
   const getHeatmapColor = (value: number) => {
     if (value < 60) return '#d1fae5'; // light green
     if (value < 85) return '#fef3c7'; // light amber
     return '#fee2e2'; // light red
   };
+
+  const periodLabel = granularity === 'year' ? 'Annual'
+    : granularity === 'quarter' ? 'Quarter'
+    : granularity === 'week' ? 'Weekly'
+    : granularity === 'day' ? 'Daily'
+    : midnightDrill.isFiltered ? 'Period' : 'Monthly';
 
   const handleExport = () => {
     const exportData = [
@@ -206,7 +163,9 @@ export default function OccupancyPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Bed Occupancy Analytics</h1>
-          <p className="mt-1 text-sm text-gray-500">Ward utilization and census monitoring</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {midnightDrill.isFiltered ? `Filtered - ${periodLabel}` : 'Ward utilization and census monitoring'}
+          </p>
         </div>
         <Button onClick={handleExport} variant="outline" size="sm" className="gap-2">
           <Download className="h-4 w-4" />
@@ -240,16 +199,16 @@ export default function OccupancyPage() {
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 px-5 py-4">
           <h2 className="text-sm font-semibold text-gray-900">Occupancy Heatmap</h2>
-          <p className="mt-1 text-xs text-gray-500">Monthly occupancy % by ward (Green: &lt;60%, Amber: 60-85%, Red: &gt;85%)</p>
+          <p className="mt-1 text-xs text-gray-500">{periodLabel} occupancy % by ward (Green: &lt;60%, Amber: 60-85%, Red: &gt;85%)</p>
         </div>
         <div className="overflow-x-auto px-5 pb-5">
           <table className="mt-4 w-full min-w-max border-collapse">
             <thead>
               <tr>
                 <th className="border border-gray-200 bg-gray-50 px-4 py-2 text-left text-xs font-semibold text-gray-600">Ward</th>
-                {MONTHS.map((month, idx) => (
+                {heatmapHeaders.map((header, idx) => (
                   <th key={idx} className="border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600">
-                    {month.substring(0, 3)}
+                    {header}
                   </th>
                 ))}
               </tr>
@@ -279,14 +238,14 @@ export default function OccupancyPage() {
         {/* Occupancy Trend Line */}
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-gray-900">Monthly Occupancy Trend</h2>
+            <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Occupancy Trend</h2>
             <p className="mt-1 text-xs text-gray-500">Percentage occupancy with 75% benchmark</p>
           </div>
           <div className="px-5 pb-5">
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={occupancyData}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} interval={0} />
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <ReferenceLine
@@ -325,13 +284,13 @@ export default function OccupancyPage() {
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 px-5 py-4">
           <h2 className="text-sm font-semibold text-gray-900">Midnight Census with 3-Month MA</h2>
-          <p className="mt-1 text-xs text-gray-500">Daily census trend with moving average overlay</p>
+          <p className="mt-1 text-xs text-gray-500">{periodLabel} census trend with moving average overlay</p>
         </div>
         <div className="px-5 pb-5">
           <ResponsiveContainer width="100%" height={320}>
             <LineChart data={withMA}>
               <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-              <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} interval={0} />
               <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Legend />

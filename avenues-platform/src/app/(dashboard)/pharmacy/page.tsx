@@ -19,9 +19,11 @@ import {
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
-import { ChartTooltipProps, MONTHS } from '@/types';
+import { ChartTooltipProps } from '@/types';
 import { formatCurrency, formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useDashboard } from '@/store';
+import { useDrillDown } from '@/hooks/useDrillDown';
+import { useFilterStore } from '@/store/filter';
 import Link from 'next/link';
 
 const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed'];
@@ -48,6 +50,9 @@ const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
 
 export default function PharmacyPage() {
   const dashData = useDashboard();
+  const { granularity } = useFilterStore();
+  const rxDrill = useDrillDown(dashData?.pharmacyRx);
+  const revDrill = useDrillDown(dashData?.pharmacyRev);
 
   // Empty state if no data loaded
   if (!dashData) {
@@ -77,36 +82,43 @@ export default function PharmacyPage() {
   }
 
   // Chart data preparation
-  const monthlyData = MONTHS.map((month, idx) => ({
-    month: month.substring(0, 3),
-    scripts: dashData.pharmacyRx[idx],
-    revenue: dashData.pharmacyRev[idx],
-    revPerScript: dashData.pharmacyRx[idx] > 0 ? dashData.pharmacyRev[idx] / dashData.pharmacyRx[idx] : 0,
+  const monthlyData = rxDrill.labels.map((label, i) => ({
+    period: label,
+    scripts: rxDrill.values[i],
+    revenue: revDrill.values[i],
+    revPerScript: rxDrill.values[i] > 0 ? revDrill.values[i] / rxDrill.values[i] : 0,
   }));
 
   const composedData = monthlyData.map(d => ({
-    month: d.month,
+    period: d.period,
     scripts: d.scripts,
     revenue: d.revenue,
   }));
 
   const trendData = monthlyData.map(d => ({
-    month: d.month,
+    period: d.period,
     value: d.revPerScript,
   }));
 
-  const monthlyDetailTable = monthlyData.map((d, idx) => ({
-    month: MONTHS[idx],
+  const monthlyDetailTable = monthlyData.map((d) => ({
+    period: d.period,
     scripts: d.scripts,
     revenue: d.revenue,
     revPerScript: d.revPerScript,
-  }));
+  })).concat([
+    {
+      period: 'Total',
+      scripts: rxDrill.total,
+      revenue: revDrill.total,
+      revPerScript: rxDrill.total > 0 ? revDrill.total / rxDrill.total : 0,
+    }
+  ]);
 
   // Calculations
-  const totalScripts = dashData.pharmacyRx.reduce((a, b) => a + b, 0);
-  const totalRevenue = dashData.pharmacyRev.reduce((a, b) => a + b, 0);
-  const activeRxMonths = dashData.pharmacyRx.filter(v => v > 0).length || 1;
-  const avgScripts = totalScripts / activeRxMonths;
+  const totalScripts = rxDrill.total;
+  const totalRevenue = revDrill.total;
+  const activePoints = rxDrill.values.filter(v => v > 0).length || 1;
+  const avgScripts = totalScripts / activePoints;
   const revenuePerScript = totalScripts > 0 ? totalRevenue / totalScripts : 0;
   const grossProfitMargin = 35; // Typical pharmacy margin
   const grossProfit = totalRevenue * (grossProfitMargin / 100);
@@ -118,12 +130,12 @@ export default function PharmacyPage() {
       { metric: 'Revenue per Script', value: formatCurrency(revenuePerScript) },
       { metric: 'Monthly Avg Scripts', value: formatNumber(avgScripts) },
       { metric: 'Gross Profit Margin %', value: `${grossProfitMargin}%` },
-      ...monthlyDetailTable.map((d) => ({
-        metric: `${d.month} - Scripts`,
+      ...monthlyDetailTable.filter(d => d.period !== 'Total').map((d) => ({
+        metric: `${d.period} - Scripts`,
         value: formatNumber(d.scripts),
       })),
-      ...monthlyDetailTable.map((d) => ({
-        metric: `${d.month} - Revenue`,
+      ...monthlyDetailTable.filter(d => d.period !== 'Total').map((d) => ({
+        metric: `${d.period} - Revenue`,
         value: formatCurrency(d.revenue),
       })),
     ];
@@ -137,7 +149,9 @@ export default function PharmacyPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Pharmacy Analytics</h1>
-          <p className="mt-1 text-sm text-gray-500">Pharmaceutical dispensing and revenue performance</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {rxDrill.isFiltered ? 'Filtered view' : 'Pharmaceutical dispensing and revenue performance'}
+          </p>
         </div>
         <Button onClick={handleExport} variant="outline" size="sm" className="gap-2 w-fit">
           <Download className="h-4 w-4" />
@@ -173,59 +187,84 @@ export default function PharmacyPage() {
         />
       </div>
 
-      {/* Charts Row 1 */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Monthly Scripts Dispensed */}
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-gray-900">Monthly Scripts Dispensed</h2>
-            <p className="mt-1 text-xs text-gray-500">Number of prescriptions filled</p>
-          </div>
-          <div className="px-5 pb-5">
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={monthlyData}>
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="scripts" fill="#0d9488" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      {/* Period label */}
+      {(() => {
+        const periodLabel = granularity === 'year' ? 'Annual'
+          : granularity === 'quarter' ? 'Quarter'
+          : granularity === 'week' ? 'Weekly'
+          : granularity === 'day' ? 'Daily'
+          : rxDrill.isFiltered ? 'Period' : 'Monthly';
 
-        {/* Monthly Pharmacy Revenue */}
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-gray-900">Monthly Pharmacy Revenue</h2>
-            <p className="mt-1 text-xs text-gray-500">Revenue with gradient fill</p>
-          </div>
-          <div className="px-5 pb-5">
-            <ResponsiveContainer width="100%" height={320}>
-              <AreaChart data={monthlyData}>
-                <defs>
-                  <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#d97706" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#d97706" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#d97706"
-                  strokeWidth={2}
-                  fill="url(#colorRev)"
-                  dot={{ fill: '#d97706', r: 3 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+        return (
+          <>
+            {/* Charts Row 1 */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Scripts Dispensed */}
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div className="border-b border-gray-200 px-5 py-4">
+                  <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Scripts Dispensed</h2>
+                  <p className="mt-1 text-xs text-gray-500">Number of prescriptions filled</p>
+                </div>
+                <div className="px-5 pb-5">
+                  <ResponsiveContainer width="100%" height={320}>
+                    <BarChart data={monthlyData}>
+                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="period"
+                        tick={{ fill: '#94a3b8', fontSize: 12 }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval={granularity === 'day' || granularity === 'week' ? Math.max(0, Math.floor(monthlyData.length / 8)) : 0}
+                      />
+                      <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Bar dataKey="scripts" fill="#0d9488" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Pharmacy Revenue */}
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div className="border-b border-gray-200 px-5 py-4">
+                  <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Pharmacy Revenue</h2>
+                  <p className="mt-1 text-xs text-gray-500">Revenue with gradient fill</p>
+                </div>
+                <div className="px-5 pb-5">
+                  <ResponsiveContainer width="100%" height={320}>
+                    <AreaChart data={monthlyData}>
+                      <defs>
+                        <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#d97706" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#d97706" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="period"
+                        tick={{ fill: '#94a3b8', fontSize: 12 }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval={granularity === 'day' || granularity === 'week' ? Math.max(0, Math.floor(monthlyData.length / 8)) : 0}
+                      />
+                      <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Area
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke="#d97706"
+                        strokeWidth={2}
+                        fill="url(#colorRev)"
+                        dot={{ fill: '#d97706', r: 3 }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Charts Row 2 */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -239,7 +278,13 @@ export default function PharmacyPage() {
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={trendData}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <XAxis
+                  dataKey="period"
+                  tick={{ fill: '#94a3b8', fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={granularity === 'day' || granularity === 'week' ? Math.max(0, Math.floor(trendData.length / 8)) : 0}
+                />
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Line
@@ -265,7 +310,13 @@ export default function PharmacyPage() {
             <ResponsiveContainer width="100%" height={320}>
               <ComposedChart data={composedData}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <XAxis
+                  dataKey="period"
+                  tick={{ fill: '#94a3b8', fontSize: 12 }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={granularity === 'day' || granularity === 'week' ? Math.max(0, Math.floor(composedData.length / 8)) : 0}
+                />
                 <YAxis yAxisId="left" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
@@ -302,17 +353,17 @@ export default function PharmacyPage() {
           </div>
         </div>
 
-        {/* Monthly Detail Table */}
+        {/* Period Detail Table */}
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-gray-900">Monthly Detail</h2>
-            <p className="mt-1 text-xs text-gray-500">12-month breakdown</p>
+            <h2 className="text-sm font-semibold text-gray-900">Period Detail</h2>
+            <p className="mt-1 text-xs text-gray-500">Breakdown with totals</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-200 bg-gray-50">
                 <tr>
-                  <th className="px-5 py-3 text-left font-semibold text-gray-900">Month</th>
+                  <th className="px-5 py-3 text-left font-semibold text-gray-900">Period</th>
                   <th className="px-5 py-3 text-right font-semibold text-gray-900">Scripts</th>
                   <th className="px-5 py-3 text-right font-semibold text-gray-900">Revenue</th>
                   <th className="px-5 py-3 text-right font-semibold text-gray-900">Rev/Script</th>
@@ -320,8 +371,11 @@ export default function PharmacyPage() {
               </thead>
               <tbody>
                 {monthlyDetailTable.map((row, idx) => (
-                  <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="px-5 py-3 text-gray-900 font-medium">{row.month}</td>
+                  <tr
+                    key={idx}
+                    className={row.period === 'Total' ? 'border-t-2 border-gray-200 bg-gray-50 font-semibold' : 'border-b border-gray-100 hover:bg-gray-50'}
+                  >
+                    <td className="px-5 py-3 text-gray-900 font-medium">{row.period}</td>
                     <td className="px-5 py-3 text-right text-gray-700">{formatNumber(row.scripts)}</td>
                     <td className="px-5 py-3 text-right text-gray-700 font-medium">{formatCurrency(row.revenue)}</td>
                     <td className="px-5 py-3 text-right text-gray-600">{formatCurrency(row.revPerScript)}</td>

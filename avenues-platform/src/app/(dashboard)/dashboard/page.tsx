@@ -18,12 +18,12 @@ import {
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
-import { ChartTooltipProps, MONTHS } from '@/types';
+import { ChartTooltipProps } from '@/types';
 import { formatCurrency, formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useDashboard } from '@/store';
+import { useDrillDown, useDrillDownRecord, type DrillDownResult } from '@/hooks/useDrillDown';
+import { useFilterStore } from '@/store/filter';
 import Link from 'next/link';
-
-const MONTH_ABBR = MONTHS.map(m => m.substring(0, 3));
 
 const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (active && payload && payload.length) {
@@ -70,7 +70,13 @@ function MonthlyTable({
   isCurrency?: boolean;
   isPercentage?: boolean;
 }) {
-  const entries = Object.entries(data).filter(([, vals]) => vals.some(v => v !== 0));
+  const drillRecord = useDrillDownRecord(data);
+  // Use the first entry's labels as column headers
+  const headers = drillRecord.size > 0
+    ? Array.from(drillRecord.values())[0].labels
+    : [];
+
+  const entries = Array.from(drillRecord.entries()).filter(([, dd]) => dd.values.some(v => v !== 0));
   if (entries.length === 0) return <p className="px-5 py-4 text-sm text-gray-400">No data available</p>;
 
   const fmt = (v: number) => {
@@ -84,21 +90,19 @@ function MonthlyTable({
       <thead className="border-b border-gray-200 bg-gray-50 sticky top-0">
         <tr>
           <th className="px-3 py-2 text-left font-semibold text-gray-900 min-w-[180px]">Item</th>
-          {MONTH_ABBR.map(m => (
-            <th key={m} className="px-2 py-2 text-right font-semibold text-gray-900 min-w-[70px]">{m}</th>
+          {headers.map(h => (
+            <th key={h} className="px-2 py-2 text-right font-semibold text-gray-900 min-w-[70px]">{h}</th>
           ))}
           <th className="px-2 py-2 text-right font-semibold text-gray-900 bg-gray-100 min-w-[80px]">Total</th>
         </tr>
       </thead>
       <tbody>
-        {entries.map(([name, vals]) => {
-          const total = isPercentage
-            ? vals.filter(v => v > 0).reduce((a, b) => a + b, 0) / Math.max(vals.filter(v => v > 0).length, 1)
-            : vals.reduce((a, b) => a + b, 0);
+        {entries.map(([name, dd]) => {
+          const total = isPercentage ? dd.average : dd.total;
           return (
             <tr key={name} className="border-b border-gray-100 hover:bg-gray-50">
               <td className="px-3 py-1.5 text-gray-900 font-medium whitespace-nowrap">{name}</td>
-              {vals.map((v, i) => (
+              {dd.values.map((v, i) => (
                 <td key={i} className="px-2 py-1.5 text-right text-gray-700 tabular-nums">{fmt(v)}</td>
               ))}
               <td className="px-2 py-1.5 text-right font-semibold text-gray-900 bg-gray-50 tabular-nums">
@@ -128,6 +132,7 @@ function SingleRowTable({ label, values, isCurrency = false }: { label: string; 
 function ColumnAnalyzer({ rawColumns }: { rawColumns: Record<string, number[]> }) {
   const [selectedCol, setSelectedCol] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
+  const selectedDrill = useDrillDown(selectedCol ? rawColumns[selectedCol] : undefined);
 
   // Group columns by category (prefix before '-')
   const groups = useMemo(() => {
@@ -152,12 +157,12 @@ function ColumnAnalyzer({ rawColumns }: { rawColumns: Record<string, number[]> }
 
   // Get chart data for the selected column
   const chartData = useMemo(() => {
-    if (!selectedCol || !rawColumns[selectedCol]) return [];
-    return MONTHS.map((month, idx) => ({
-      month: month.substring(0, 3),
-      value: rawColumns[selectedCol][idx] || 0,
+    if (!selectedCol || selectedDrill.values.length === 0) return [];
+    return selectedDrill.labels.map((label, idx) => ({
+      period: label,
+      value: selectedDrill.values[idx] || 0,
     }));
-  }, [selectedCol, rawColumns]);
+  }, [selectedCol, selectedDrill]);
 
   // Auto-detect if this looks like a currency, percentage, or count field
   const isCurrency = selectedCol.toLowerCase().includes('revenue') ||
@@ -227,17 +232,17 @@ function ColumnAnalyzer({ rawColumns }: { rawColumns: Record<string, number[]> }
               Showing: <span className="font-semibold text-gray-700">{selectedCol}</span>
               {' '} — Total: <span className="font-semibold">
                 {isCurrency
-                  ? formatCurrency(chartData.reduce((s, d) => s + d.value, 0))
+                  ? formatCurrency(selectedDrill.total)
                   : isPercentage
-                    ? `${(chartData.filter(d => d.value > 0).reduce((s, d) => s + d.value, 0) / Math.max(chartData.filter(d => d.value > 0).length, 1)).toFixed(1)}% avg`
-                    : formatNumber(chartData.reduce((s, d) => s + d.value, 0))
+                    ? `${selectedDrill.average.toFixed(1)}% avg`
+                    : formatNumber(selectedDrill.total)
                 }
               </span>
             </p>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={chartData}>
                 <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip
                   formatter={(value) => {
@@ -272,6 +277,23 @@ function ColumnAnalyzer({ rawColumns }: { rawColumns: Record<string, number[]> }
 
 export default function DashboardPage() {
   const dashData = useDashboard();
+  const { granularity, selectedMonths } = useFilterStore();
+
+  // Initialize drill-down hooks
+  const revenueDrill = useDrillDown(dashData?.monthRevenue);
+  const casualtyDrill = useDrillDown(dashData?.admCasualty);
+  const dayDrill = useDrillDown(dashData?.admDay);
+  const inpatientDrill = useDrillDown(dashData?.admInpatient);
+  const labDrill = useDrillDown(dashData?.admLab);
+  const epsFinDrill = useDrillDown(dashData?.epsFinalised);
+  const theatreDrill = useDrillDown(dashData?.theatreCases);
+  const rxDrill = useDrillDown(dashData?.pharmacyRx);
+
+  // Payments drill-downs
+  const depositsDrill = useDrillDown(dashData?.payments?.deposits);
+  const individualDrill = useDrillDown(dashData?.payments?.individual);
+  const medAidDrill = useDrillDown(dashData?.payments?.medAid);
+  const batchedDrill = useDrillDown(dashData?.payments?.batched);
 
   // Empty state
   if (!dashData) {
@@ -297,51 +319,50 @@ export default function DashboardPage() {
     );
   }
 
-  // ── Prepare chart data ──
-  const revenueData = MONTHS.map((month, idx) => ({
-    month: month.substring(0, 3),
-    Revenue: dashData.monthRevenue[idx],
+  // ── Determine period label based on granularity ──
+  let periodLabel = 'Month';
+  if (granularity === 'quarter') periodLabel = 'Quarter';
+  else if (granularity === 'year') periodLabel = 'Year';
+
+  // ── Prepare chart data using drill-down ──
+  const revenueData = revenueDrill.labels.map((label, i) => ({
+    period: label,
+    Revenue: revenueDrill.values[i],
   }));
 
-  const admissionsData = MONTHS.map((month, idx) => ({
-    month: month.substring(0, 3),
-    Casualty: dashData.admCasualty[idx],
-    'Day Patient': dashData.admDay[idx],
-    'In-Patient': dashData.admInpatient[idx],
-    Laboratory: dashData.admLab[idx],
+  const admissionsData = casualtyDrill.labels.map((label, i) => ({
+    period: label,
+    Casualty: casualtyDrill.values[i],
+    'Day Patient': dayDrill.values[i],
+    'In-Patient': inpatientDrill.values[i],
+    Laboratory: labDrill.values[i],
   }));
 
-  const paymentsData = MONTHS.map((month, idx) => ({
-    month: month.substring(0, 3),
-    Deposits: dashData.payments.deposits[idx],
-    Individual: dashData.payments.individual[idx],
-    'Med Aid': dashData.payments.medAid[idx],
-    Batched: dashData.payments.batched[idx],
+  const paymentsData = depositsDrill.labels.map((label, i) => ({
+    period: label,
+    Deposits: depositsDrill.values[i],
+    Individual: individualDrill.values[i],
+    'Med Aid': medAidDrill.values[i],
+    Batched: batchedDrill.values[i],
   }));
 
-  // ── KPI totals ──
-  const totalRevenue = dashData.monthRevenue.reduce((a, b) => a + b, 0);
-  const totalAdmissions = dashData.admCasualty.reduce((a, b) => a + b, 0) +
-    dashData.admDay.reduce((a, b) => a + b, 0) +
-    dashData.admInpatient.reduce((a, b) => a + b, 0) +
-    dashData.admLab.reduce((a, b) => a + b, 0);
-  const totalEpisodesFinalised = dashData.epsFinalised.reduce((a, b) => a + b, 0);
-  const totalTheatreCases = dashData.theatreCases.reduce((a, b) => a + b, 0);
-  const totalPrescriptions = dashData.pharmacyRx.reduce((a, b) => a + b, 0);
-  const totalPayments =
-    dashData.payments.deposits.reduce((a, b) => a + b, 0) +
-    dashData.payments.individual.reduce((a, b) => a + b, 0) +
-    dashData.payments.medAid.reduce((a, b) => a + b, 0) +
-    dashData.payments.batched.reduce((a, b) => a + b, 0);
+  // ── KPI totals using drill data ──
+  const totalRevenue = revenueDrill.total;
+  const totalAdmissions = casualtyDrill.total + dayDrill.total + inpatientDrill.total + labDrill.total;
+  const totalEpisodesFinalised = epsFinDrill.total;
+  const totalTheatreCases = theatreDrill.total;
+  const totalPrescriptions = rxDrill.total;
+  const totalPayments = depositsDrill.total + individualDrill.total + medAidDrill.total + batchedDrill.total;
 
   const handleExport = () => {
-    // Export raw columns as CSV
+    // Export raw columns as CSV using drill data
     const rows: Record<string, string>[] = [];
     const colNames = Object.keys(dashData.rawColumns || {});
-    MONTHS.forEach((month, idx) => {
-      const row: Record<string, string> = { Month: month };
+    revenueDrill.labels.forEach((label, idx) => {
+      const row: Record<string, string> = { Period: label };
       colNames.forEach(col => {
-        row[col] = String(dashData.rawColumns?.[col]?.[idx] ?? 0);
+        const drillCol = useDrillDown(dashData.rawColumns?.[col]);
+        row[col] = String(drillCol.values?.[idx] ?? 0);
       });
       rows.push(row);
     });
@@ -379,10 +400,10 @@ export default function DashboardPage() {
 
       {/* Charts Row */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Monthly Revenue Trend */}
+        {/* Revenue Trend */}
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-5 py-3">
-            <h2 className="text-sm font-semibold text-gray-900">Monthly Revenue Trend</h2>
+            <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Revenue Trend</h2>
           </div>
           <div className="px-5 pb-5">
             <ResponsiveContainer width="100%" height={280}>
@@ -394,7 +415,7 @@ export default function DashboardPage() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(revenueData.length / 6))} />
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Area type="monotone" dataKey="Revenue" stroke="#0d9488" strokeWidth={2} fill="url(#colorRevenue)" dot={{ fill: '#0d9488', r: 3 }} />
@@ -403,16 +424,16 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Monthly Admissions by Type */}
+        {/* Admissions by Type */}
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-5 py-3">
-            <h2 className="text-sm font-semibold text-gray-900">Monthly Admissions by Type</h2>
+            <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Admissions by Type</h2>
           </div>
           <div className="px-5 pb-5">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={admissionsData}>
                 <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(admissionsData.length / 6))} />
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
@@ -579,8 +600,8 @@ export default function DashboardPage() {
         </Section>
       )}
 
-      {/* 21. Payments Per Day */}
-      <Section title="Payments Per Day">
+      {/* 21. Payments Per Period */}
+      <Section title="Payments Per Period">
         <div className="grid gap-4 lg:grid-cols-2 p-4">
           <div>
             <MonthlyTable data={{
@@ -594,7 +615,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={paymentsData}>
                 <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(paymentsData.length / 6))} />
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 10 }} />

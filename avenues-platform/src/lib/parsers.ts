@@ -185,10 +185,20 @@ function parseNumber(value: unknown): number {
 }
 
 /**
- * Split a CSV line respecting quoted fields
- * e.g., 'January,"1,234",5678' → ['January', '1,234', '5678']
+ * Detect delimiter: tab or comma. If the line contains tabs, use tab.
  */
-function splitCSVLine(line: string): string[] {
+function detectDelimiter(line: string): string {
+  return line.includes('\t') ? '\t' : ',';
+}
+
+/**
+ * Split a CSV/TSV line respecting quoted fields.
+ * Auto-detects tab or comma delimiter.
+ * e.g., 'January,"1,234",5678' → ['January', '1,234', '5678']
+ * e.g., 'CASUALTY PATIENT\t758\t694' → ['CASUALTY PATIENT', '758', '694']
+ */
+function splitCSVLine(line: string, delimiter?: string): string[] {
+  const delim = delimiter ?? detectDelimiter(line);
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -196,7 +206,7 @@ function splitCSVLine(line: string): string[] {
     const ch = line[i];
     if (ch === '"') {
       inQuotes = !inQuotes;
-    } else if (ch === ',' && !inQuotes) {
+    } else if (ch === delim && !inQuotes) {
       result.push(current.trim());
       current = '';
     } else {
@@ -246,13 +256,23 @@ function emptyDashMetrics(year: number): DashboardMetrics {
 /**
  * Parse Dashboard CSV (RptManagementDashboard.csv format)
  *
- * Supports COLUMNAR format:
- * Line 1: Facility name (e.g., "Avenues Clinic")
- * Line 2: Report description with date range
- * Line 3: Column headers — "Date,Admissions-CASUALTY PATIENT,Admissions-DAY PATIENT,..."
- * Lines 4+: One row per month — "January,758,68,589,..."
+ * Supports TWO formats:
  *
- * Each column header is "Category-SubItem". Months are rows.
+ * FORMAT A — COLUMNAR (column headers like "Admissions-CASUALTY PATIENT"):
+ *   Line 1: Facility name
+ *   Line 2: Report description with date range
+ *   Line 3: Column headers — "Date,Admissions-CASUALTY PATIENT,..."
+ *   Lines 4+: One row per month — "January,758,68,..."
+ *
+ * FORMAT B — SECTION-BASED (tab-delimited, sections as row groups):
+ *   Line 1: Facility name
+ *   Line 2: Report description with date range
+ *   Line 3: "Months\tJanuary\tFebruary\t..." (month headers)
+ *   Line 4: Section header (e.g., "Admissions")
+ *   Line 5+: "CASUALTY PATIENT\t758\t694\t..."
+ *   Blank/Total lines separate sections. Next section header follows.
+ *
+ * Detection: if line 3 starts with "Months" (case-insensitive), it's Format B.
  */
 export function parseDashboardCSV(csvText: string): YearData {
   const lines = csvText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -267,22 +287,81 @@ export function parseDashboardCSV(csvText: string): YearData {
 
   const metrics = emptyDashMetrics(year);
 
-  // Parse column headers (line index 2)
+  // Detect delimiter from the first substantial data line
+  const delim = detectDelimiter(lines[2] || lines[3] || '');
+
+  // Detect format: if line 3 (index 2) starts with "Months" → section-based (Format B)
   const headerLine = lines[2] || '';
-  const headers = splitCSVLine(headerLine);
+  const headerFields = splitCSVLine(headerLine, delim);
+  const isSectionBased = headerFields[0]?.toLowerCase().startsWith('month');
 
-  // Store ALL raw column data: parse each month row, place value at month index
-  for (let lineIdx = 3; lineIdx < lines.length; lineIdx++) {
-    const fields = splitCSVLine(lines[lineIdx]);
-    const monthName = (fields[0] || '').trim();
-    const mIdx = getMonthIndex(monthName);
-    if (mIdx < 0) continue; // skip non-month rows (e.g., "Total")
+  if (isSectionBased) {
+    // ── FORMAT B: Section-based (tab-delimited) ──
+    // Line 3 = "Months  January  February  ..." → extract month column indices
+    const monthIndices: number[] = []; // maps position (1..12) → month index (0..11)
+    for (let i = 1; i < headerFields.length; i++) {
+      const mIdx = getMonthIndex(headerFields[i]?.trim() || '');
+      monthIndices.push(mIdx); // -1 for "Total" or unrecognised
+    }
 
-    for (let col = 1; col < headers.length; col++) {
-      const colName = headers[col]?.trim();
+    let currentSection = '';
+
+    for (let lineIdx = 3; lineIdx < lines.length; lineIdx++) {
+      const line = lines[lineIdx];
+      const fields = splitCSVLine(line, delim);
+      const firstField = (fields[0] || '').trim();
+
+      // Skip "Total" rows
+      if (firstField.toLowerCase() === 'total') continue;
+
+      // Is this a section header? A section header has no numeric data in subsequent columns.
+      // Check: if fields[1..] are all empty or non-numeric, this is a section header.
+      const hasData = fields.slice(1).some(f => {
+        const trimmed = f.trim();
+        return trimmed !== '' && !isNaN(parseNumber(trimmed)) && parseNumber(trimmed) !== 0;
+      });
+
+      // Also check: if there's only 1 field (no tabs after), it's definitely a section header
+      const isSectionHeader = (fields.length <= 1 || !hasData) && firstField !== '';
+
+      if (isSectionHeader) {
+        currentSection = firstField;
+        continue;
+      }
+
+      // Data row: "ITEM_NAME\t758\t694\t825\t..."
+      // Special case: empty first field means this is a single unnamed row under the current section
+      // e.g., "Patients Transferred..." section has just "\t3\t0\t2\t..."
+      // In that case, use the section name itself as the column name (no dash suffix)
+      const colName = firstField === ''
+        ? currentSection
+        : currentSection ? `${currentSection}-${firstField}` : firstField;
       if (!colName) continue;
       if (!metrics.rawColumns[colName]) metrics.rawColumns[colName] = z12();
-      metrics.rawColumns[colName][mIdx] = parseNumber(fields[col]);
+
+      for (let i = 1; i < fields.length && i - 1 < monthIndices.length; i++) {
+        const mIdx = monthIndices[i - 1];
+        if (mIdx >= 0 && mIdx < 12) {
+          metrics.rawColumns[colName][mIdx] = parseNumber(fields[i]);
+        }
+      }
+    }
+  } else {
+    // ── FORMAT A: Columnar (comma-delimited, category-item column headers) ──
+    const headers = headerFields;
+
+    for (let lineIdx = 3; lineIdx < lines.length; lineIdx++) {
+      const fields = splitCSVLine(lines[lineIdx], delim);
+      const monthName = (fields[0] || '').trim();
+      const mIdx = getMonthIndex(monthName);
+      if (mIdx < 0) continue;
+
+      for (let col = 1; col < headers.length; col++) {
+        const colName = headers[col]?.trim();
+        if (!colName) continue;
+        if (!metrics.rawColumns[colName]) metrics.rawColumns[colName] = z12();
+        metrics.rawColumns[colName][mIdx] = parseNumber(fields[col]);
+      }
     }
   }
 
