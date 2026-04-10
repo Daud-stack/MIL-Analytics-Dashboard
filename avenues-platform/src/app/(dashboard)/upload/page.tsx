@@ -121,7 +121,37 @@ function detectAndParse(csvText: string, manualYear: number | null): {
     }
   }
 
-  // ====== STRATEGY 2: Location/Episode CSV Detection ======
+  // ====== STRATEGY 2: Claims CSV Detection ======
+  // Claims CSVs have claim-specific columns (Claim Date, Claim Value, EDI Status, Amount Paid).
+  // Must be checked BEFORE Location because both share "Episode" and "Medical Aid" columns.
+  const claimsSignals = [
+    firstLine.includes('Claim Date'),
+    firstLine.includes('Claim Value'),
+    firstLine.includes('EDI Status'),
+    firstLine.includes('Amount Paid'),
+    firstLine.toLowerCase().includes('apac'),
+    firstLine.toLowerCase().includes('rejection'),
+    allText.includes('claim_id') || allText.includes('claim number'),
+  ].filter(Boolean).length;
+
+  const isClaims = claimsSignals >= 2 ||
+    (firstLine.toLowerCase().includes('claim') && firstLine.toLowerCase().includes('edi')) ||
+    (firstLine.toLowerCase().includes('claim') && firstLine.toLowerCase().includes('amount paid'));
+
+  if (isClaims) {
+    try {
+      const year = manualYear || detectYear(csvText);
+      const parsedData = parseClaimsCSV(csvText);
+      const rowCount = lines.length - 1;
+      const score = (parsedData?.claims?.totalClaims ?? 0) > 0 ? 100 : 50;
+      console.log('[Upload] Detected Claims CSV: Year:', year, 'Claims:', parsedData?.claims?.totalClaims);
+      return { type: 'Claims', facilityName: 'Avenues Clinic', year, parsedData, rowCount, columnScore: score, debugInfo: `Claims: ${parsedData?.claims?.totalClaims || 0} records` };
+    } catch (e) {
+      console.error('[Upload] Claims parse error:', e);
+    }
+  }
+
+  // ====== STRATEGY 3: Location/Episode CSV Detection ======
   // LOC CSVs have patient-level rows with columns like Episode, Patient Name, Doctor, ICD, CPT, etc.
   const isLocation =
     firstLine.startsWith('Episode') ||
@@ -151,29 +181,6 @@ function detectAndParse(csvText: string, manualYear: number | null): {
       return { type: 'Location', facilityName: 'Avenues Clinic', year, parsedData, rowCount, columnScore: score, debugInfo: `Location: ${rowCount} episodes, ${doctorCount} doctors` };
     } catch (e) {
       console.error('[Upload] Location parse error:', e);
-    }
-  }
-
-  // ====== STRATEGY 3: Claims CSV Detection ======
-  const isClaims =
-    firstLine.toLowerCase().includes('claim') ||
-    firstLine.toLowerCase().includes('apac') ||
-    firstLine.toLowerCase().includes('edi') ||
-    firstLine.toLowerCase().includes('submitted') ||
-    firstLine.toLowerCase().includes('rejection') ||
-    allText.includes('claim_id') ||
-    allText.includes('claim number');
-
-  if (isClaims) {
-    try {
-      const year = manualYear || detectYear(csvText);
-      const parsedData = parseClaimsCSV(csvText);
-      const rowCount = lines.length - 1;
-      const score = (parsedData?.claims?.totalClaims ?? 0) > 0 ? 100 : 50;
-      console.log('[Upload] Detected Claims CSV: Year:', year, 'Claims:', parsedData?.claims?.totalClaims);
-      return { type: 'Claims', facilityName: 'Avenues Clinic', year, parsedData, rowCount, columnScore: score, debugInfo: `Claims: ${parsedData?.claims?.totalClaims || 0} records` };
-    } catch (e) {
-      console.error('[Upload] Claims parse error:', e);
     }
   }
 

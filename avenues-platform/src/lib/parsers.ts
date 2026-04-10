@@ -809,12 +809,16 @@ export function parseClaimsCSV(csvText: string): YearData {
     return null;
   };
 
-  const colStatus = findCol(['status']);
-  const colAmount = findCol(['amount', 'total', 'claimed']);
-  const colScheme = findCol(['scheme', 'medical aid', 'funder']);
+  const colStatus = findCol(['edi status', 'status']);
+  const colClaimValue = findCol(['claim value', 'claimed']);
+  const colAmountPaid = findCol(['amount paid', 'paid']);
+  const colAmount = colClaimValue || findCol(['amount', 'total']);
+  const colScheme = findCol(['medical aid', 'scheme', 'funder']);
   const colDoctor = findCol(['doctor', 'provider']);
-  const colDate = findCol(['date', 'submitted']);
-  const colReason = findCol(['reason', 'rejection']);
+  const colClaimDate = findCol(['claim date']);
+  const colDate = colClaimDate || findCol(['discharge date', 'date', 'submitted']);
+  const colReason = findCol(['reason', 'rejection', 'description']);
+  const colEpisode = findCol(['episode']);
 
   const metrics: ClaimsMetrics = {
     year,
@@ -838,25 +842,30 @@ export function parseClaimsCSV(csvText: string): YearData {
   };
 
   for (const row of data) {
-    const status = colStatus ? (row[colStatus] || '').trim().toLowerCase() : '';
-    const amount = colAmount ? parseNumber(row[colAmount]) : 0;
+    const rawStatus = colStatus ? (row[colStatus] || '').trim() : '';
+    const status = rawStatus.toLowerCase();
+    const claimValue = colAmount ? parseNumber(row[colAmount]) : 0;
+    const amountPaid = colAmountPaid ? parseNumber(row[colAmountPaid]) : 0;
+    const amount = claimValue || amountPaid;
     const scheme = colScheme ? (row[colScheme] || '').trim() : '';
     const doctor = colDoctor ? (row[colDoctor] || '').trim() : '';
     const reason = colReason ? (row[colReason] || '').trim() : '';
 
-    metrics.totalClaimed += amount;
+    metrics.totalClaimed += claimValue;
 
-    // Status tracking
-    if (status.includes('approved') || status.includes('accepted') || status.includes('paid')) {
+    // Status tracking — handle both full words and EDI single-letter codes
+    // Common EDI codes: R=Received, A=Accepted/Approved, P=Pending, X/D=Rejected/Declined
+    const s = rawStatus.toUpperCase();
+    if (status.includes('approved') || status.includes('accepted') || status.includes('paid') || s === 'A') {
       metrics.approved++;
-    } else if (status.includes('rejected') || status.includes('declined')) {
+    } else if (status.includes('rejected') || status.includes('declined') || s === 'X' || s === 'D') {
       metrics.rejected++;
       if (reason) metrics.rejectionReasons[reason] = (metrics.rejectionReasons[reason] || 0) + 1;
-    } else if (status.includes('pending') || status.includes('processing')) {
+    } else if (status.includes('pending') || status.includes('processing') || s === 'P') {
       metrics.pending++;
-    } else if (status.includes('submitted') || status.includes('sent')) {
+    } else if (status.includes('submitted') || status.includes('sent') || s === 'S') {
       metrics.submitted++;
-    } else if (status.includes('received')) {
+    } else if (status.includes('received') || s === 'R') {
       metrics.received++;
     }
 
@@ -870,10 +879,10 @@ export function parseClaimsCSV(csvText: string): YearData {
         const month = parseInt(dateMatch[2], 10) - 1;
         if (month >= 0 && month < 12) {
           metrics.totalClaims_monthly[month]++;
-          metrics.claimAmounts_monthly[month] += amount;
-          if (status.includes('approved') || status.includes('paid')) metrics.approvedClaims_monthly[month]++;
-          if (status.includes('rejected')) metrics.rejectedClaims_monthly[month]++;
-          if (status.includes('pending')) metrics.pendingClaims_monthly[month]++;
+          metrics.claimAmounts_monthly[month] += claimValue;
+          if (status.includes('approved') || status.includes('accepted') || status.includes('paid') || s === 'A') metrics.approvedClaims_monthly[month]++;
+          if (status.includes('rejected') || status.includes('declined') || s === 'X' || s === 'D') metrics.rejectedClaims_monthly[month]++;
+          if (status.includes('pending') || status.includes('processing') || s === 'P') metrics.pendingClaims_monthly[month]++;
           metrics.byMonth[month] = (metrics.byMonth[month] || 0) + 1;
         }
       }
@@ -884,10 +893,11 @@ export function parseClaimsCSV(csvText: string): YearData {
       if (!metrics.byScheme[scheme]) {
         metrics.byScheme[scheme] = { totalClaimed: 0, submitted: 0, received: 0, rejected: 0, approved: 0, pending: 0 };
       }
-      metrics.byScheme[scheme].totalClaimed += amount;
-      if (status.includes('approved') || status.includes('paid')) metrics.byScheme[scheme].approved++;
-      else if (status.includes('rejected')) metrics.byScheme[scheme].rejected++;
-      else if (status.includes('pending')) metrics.byScheme[scheme].pending++;
+      metrics.byScheme[scheme].totalClaimed += claimValue;
+      if (status.includes('approved') || status.includes('accepted') || status.includes('paid') || s === 'A') metrics.byScheme[scheme].approved++;
+      else if (status.includes('rejected') || status.includes('declined') || s === 'X' || s === 'D') metrics.byScheme[scheme].rejected++;
+      else if (status.includes('pending') || status.includes('processing') || s === 'P') metrics.byScheme[scheme].pending++;
+      else if (status.includes('received') || s === 'R') metrics.byScheme[scheme].received++;
       else metrics.byScheme[scheme].submitted++;
     }
 
@@ -897,8 +907,8 @@ export function parseClaimsCSV(csvText: string): YearData {
         metrics.byDoctor[doctor] = { claims: 0, approved: 0, amount: 0 };
       }
       metrics.byDoctor[doctor].claims++;
-      metrics.byDoctor[doctor].amount += amount;
-      if (status.includes('approved') || status.includes('paid')) metrics.byDoctor[doctor].approved++;
+      metrics.byDoctor[doctor].amount += claimValue;
+      if (status.includes('approved') || status.includes('accepted') || status.includes('paid') || s === 'A') metrics.byDoctor[doctor].approved++;
     }
   }
 
