@@ -256,7 +256,7 @@ function emptyDashMetrics(year: number): DashboardMetrics {
 /**
  * Parse Dashboard CSV (RptManagementDashboard.csv format)
  *
- * Supports TWO formats:
+ * Supports THREE formats:
  *
  * FORMAT A — COLUMNAR (column headers like "Admissions-CASUALTY PATIENT"):
  *   Line 1: Facility name
@@ -264,15 +264,20 @@ function emptyDashMetrics(year: number): DashboardMetrics {
  *   Line 3: Column headers — "Date,Admissions-CASUALTY PATIENT,..."
  *   Lines 4+: One row per month — "January,758,68,..."
  *
- * FORMAT B — SECTION-BASED (tab-delimited, sections as row groups):
- *   Line 1: Facility name
- *   Line 2: Report description with date range
- *   Line 3: "Months\tJanuary\tFebruary\t..." (month headers)
- *   Line 4: Section header (e.g., "Admissions")
- *   Line 5+: "CASUALTY PATIENT\t758\t694\t..."
- *   Blank/Total lines separate sections. Next section header follows.
+ * FORMAT B — SECTION-BASED with month names (tab-delimited):
+ *   Line 3: "Months\tJanuary\tFebruary\t..."
+ *   Sections as row groups with data beneath.
  *
- * Detection: if line 3 starts with "Months" (case-insensitive), it's Format B.
+ * FORMAT C — SECTION-BASED with numeric columns (comma-delimited):
+ *   Line 2: "Management Dashboard Report With Capture Date DD/MM/YYYY To DD/MM/YYYY"
+ *   Line 3: "DataSet,1,2,3,...,N,Total"
+ *   Sections as row groups. Columns are month numbers (1=Jan) for multi-month
+ *   reports, or day numbers for single-month reports.
+ *
+ * Detection:
+ *   - Line 3 starts with "Months" → Format B
+ *   - Line 3 starts with "DataSet" → Format C
+ *   - Otherwise → Format A
  */
 export function parseDashboardCSV(csvText: string): YearData {
   const lines = csvText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -290,38 +295,57 @@ export function parseDashboardCSV(csvText: string): YearData {
   // Detect delimiter from the first substantial data line
   const delim = detectDelimiter(lines[2] || lines[3] || '');
 
-  // Detect format: if line 3 (index 2) starts with "Months" → section-based (Format B)
+  // Detect format from line 3 (index 2)
   const headerLine = lines[2] || '';
   const headerFields = splitCSVLine(headerLine, delim);
-  const isSectionBased = headerFields[0]?.toLowerCase().startsWith('month');
+  const firstHeader = headerFields[0]?.toLowerCase().trim() || '';
 
-  if (isSectionBased) {
-    // ── FORMAT B: Section-based (tab-delimited) ──
-    // Line 3 = "Months  January  February  ..." → extract month column indices
-    const monthIndices: number[] = []; // maps position (1..12) → month index (0..11)
-    for (let i = 1; i < headerFields.length; i++) {
-      const mIdx = getMonthIndex(headerFields[i]?.trim() || '');
-      monthIndices.push(mIdx); // -1 for "Total" or unrecognised
+  const isFormatB = firstHeader.startsWith('month');   // "Months\tJanuary\t..."
+  const isFormatC = firstHeader === 'dataset';          // "DataSet,1,2,3,...,Total"
+
+  // ── For Format C: determine if numeric columns are months or days ──
+  // Parse date range from line 2: "...Capture Date DD/MM/YYYY To DD/MM/YYYY"
+  let formatCStartMonth = 0; // 0-based month index of the start date
+  let formatCIsDaily = false; // true if single-month report (columns = days)
+
+  if (isFormatC) {
+    const dateRangeMatch = line2.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+To\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+    if (dateRangeMatch) {
+      const startMonth = parseInt(dateRangeMatch[2], 10) - 1; // 0-based
+      const endMonth = parseInt(dateRangeMatch[5], 10) - 1;
+      formatCStartMonth = startMonth;
+      formatCIsDaily = (startMonth === endMonth);
+      console.log('[Parser] Date range:', dateRangeMatch[0],
+        '| Mode:', formatCIsDaily ? 'daily' : 'monthly',
+        '| Start month:', startMonth);
     }
+  }
 
+  // ── Helper: parse section-based rows (shared by Format B and C) ──
+  function parseSectionRows(
+    startLine: number,
+    lineDelim: string,
+    mapColumnToMonth: (colIndex: number) => number, // maps 1-based col position → 0-based month index (-1 to skip)
+  ) {
     let currentSection = '';
 
-    for (let lineIdx = 3; lineIdx < lines.length; lineIdx++) {
+    for (let lineIdx = startLine; lineIdx < lines.length; lineIdx++) {
       const line = lines[lineIdx];
-      const fields = splitCSVLine(line, delim);
+      const fields = splitCSVLine(line, lineDelim);
       const firstField = (fields[0] || '').trim();
 
       // Skip "Total" rows
       if (firstField.toLowerCase() === 'total') continue;
 
-      // Is this a section header? A section header has no numeric data in subsequent columns.
-      // Check: if fields[1..] are all empty or non-numeric, this is a section header.
+      // Is this a section header? Check if fields[1..] have any non-zero numeric data.
       const hasData = fields.slice(1).some(f => {
         const trimmed = f.trim();
-        return trimmed !== '' && !isNaN(parseNumber(trimmed)) && parseNumber(trimmed) !== 0;
+        if (trimmed === '' || trimmed.toLowerCase() === 'total') return false;
+        const num = parseNumber(trimmed);
+        return num !== 0;
       });
 
-      // Also check: if there's only 1 field (no tabs after), it's definitely a section header
+      // Section header: only 1 field, or no numeric data in remaining fields, and non-empty first field
       const isSectionHeader = (fields.length <= 1 || !hasData) && firstField !== '';
 
       if (isSectionHeader) {
@@ -329,25 +353,54 @@ export function parseDashboardCSV(csvText: string): YearData {
         continue;
       }
 
-      // Data row: "ITEM_NAME\t758\t694\t825\t..."
-      // Special case: empty first field means this is a single unnamed row under the current section
-      // e.g., "Patients Transferred..." section has just "\t3\t0\t2\t..."
-      // In that case, use the section name itself as the column name (no dash suffix)
+      // Data row
+      // Empty first field = unnamed row (e.g., transfers section), use section name directly
       const colName = firstField === ''
         ? currentSection
         : currentSection ? `${currentSection}-${firstField}` : firstField;
       if (!colName) continue;
       if (!metrics.rawColumns[colName]) metrics.rawColumns[colName] = z12();
 
-      for (let i = 1; i < fields.length && i - 1 < monthIndices.length; i++) {
-        const mIdx = monthIndices[i - 1];
+      for (let i = 1; i < fields.length; i++) {
+        const fieldVal = fields[i]?.trim();
+        if (!fieldVal || fieldVal.toLowerCase() === 'total') continue;
+        const mIdx = mapColumnToMonth(i);
         if (mIdx >= 0 && mIdx < 12) {
-          metrics.rawColumns[colName][mIdx] = parseNumber(fields[i]);
+          metrics.rawColumns[colName][mIdx] += parseNumber(fields[i]);
         }
       }
     }
+  }
+
+  if (isFormatB) {
+    // ── FORMAT B: Section-based with month names ──
+    const monthIndices: number[] = [];
+    for (let i = 1; i < headerFields.length; i++) {
+      monthIndices.push(getMonthIndex(headerFields[i]?.trim() || ''));
+    }
+    parseSectionRows(3, delim, (col) => monthIndices[col - 1] ?? -1);
+
+  } else if (isFormatC) {
+    // ── FORMAT C: Section-based with numeric columns ──
+    // For monthly reports: column "1" = month at startMonth, "2" = startMonth+1, etc.
+    // For daily reports: all columns map to formatCStartMonth (aggregate days into month)
+    parseSectionRows(3, delim, (col) => {
+      if (formatCIsDaily) {
+        // All day columns aggregate into the single month
+        return formatCStartMonth;
+      } else {
+        // Column "1" = month 0 (Jan), "2" = month 1 (Feb), etc.
+        // The header value at this position tells us the month number
+        const headerVal = parseInt(headerFields[col]?.trim() || '0', 10);
+        if (headerVal >= 1 && headerVal <= 12) {
+          return headerVal - 1; // convert 1-based month to 0-based
+        }
+        return -1; // skip "Total" or invalid
+      }
+    });
+
   } else {
-    // ── FORMAT A: Columnar (comma-delimited, category-item column headers) ──
+    // ── FORMAT A: Columnar (category-item column headers, months as rows) ──
     const headers = headerFields;
 
     for (let lineIdx = 3; lineIdx < lines.length; lineIdx++) {
