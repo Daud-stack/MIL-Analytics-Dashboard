@@ -57,13 +57,14 @@ export async function POST(request: NextRequest) {
       }
 
       // Insert the localStorage data
+      // Prisma 7 JSON fields: use undefined instead of null for empty values
       await prisma.yearDataRecord.create({
         data: {
           year,
           orgId,
-          dashboard: (data.dashboard ?? data.dash ?? null) as object | null,
-          location: (data.location ?? data.loc ?? null) as object | null,
-          claims: (data.claims ?? data.apac ?? null) as object | null,
+          dashboard: (data.dashboard ?? data.dash ?? undefined) as undefined | object,
+          location: (data.location ?? data.loc ?? undefined) as undefined | object,
+          claims: (data.claims ?? data.apac ?? undefined) as undefined | object,
           datasets: (data.datasets ?? {}) as object,
           uploads: (data.uploads ?? []) as object,
           processedHashes: [],
