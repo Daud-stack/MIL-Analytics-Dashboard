@@ -8,7 +8,9 @@ export default auth((req) => {
     req.nextUrl.pathname.startsWith("/register");
   const isApiAuth = req.nextUrl.pathname.startsWith("/api/auth");
   const isPublicApi =
-    req.nextUrl.pathname.startsWith("/api/health");
+    req.nextUrl.pathname.startsWith("/api/health") ||
+    req.nextUrl.pathname.startsWith("/api/data/ingest") ||
+    req.nextUrl.pathname.startsWith("/api/admin/orgs");
 
   // Always allow auth endpoints
   if (isApiAuth || isPublicApi) {
