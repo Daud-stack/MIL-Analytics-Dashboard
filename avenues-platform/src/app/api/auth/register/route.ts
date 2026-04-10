@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import prisma from "@/lib/prisma";
 
 const registerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -10,94 +11,79 @@ const registerSchema = z.object({
   role: z.enum(["ADMIN", "ANALYST", "VIEWER"]).optional().default("ANALYST"),
 });
 
-type RegisterRequest = z.infer<typeof registerSchema>;
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const data = registerSchema.parse(body);
 
-    // Validate request body
-    const validatedData = registerSchema.parse(body);
+    // Check if user already exists
+    const existing = await prisma.user.findUnique({
+      where: { email: data.email.toLowerCase().trim() },
+    });
 
-    // In development mode, we don't persist to a database
-    // In production, you would:
-    // 1. Check if user already exists
-    // 2. Hash the password
-    // 3. Create user in database
-    // 4. Return success response
-
-    if (process.env.NODE_ENV === "development") {
-      // Dev mode: just validate and return success
-      const hashedPassword = await bcrypt.hash(validatedData.password, 10);
-
-      // TODO: Implement database write when database is configured
-      // const user = await prisma.user.create({
-      //   data: {
-      //     name: validatedData.name,
-      //     email: validatedData.email,
-      //     password: hashedPassword,
-      //     organization: validatedData.organization,
-      //     role: validatedData.role,
-      //   },
-      // });
-
+    if (existing) {
       return NextResponse.json(
-        {
-          success: true,
-          message: "Account created successfully. You can now sign in.",
-          user: {
-            name: validatedData.name,
-            email: validatedData.email,
-            organization: validatedData.organization,
-            role: validatedData.role,
-          },
-        },
-        { status: 201 }
+        { success: false, message: "An account with this email already exists" },
+        { status: 409 }
       );
     }
 
-    // Production mode: persist to database
-    // This will be implemented when database is set up
+    // Find or create the organization
+    const orgSlug = data.organization
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    let org = await prisma.organization.findUnique({
+      where: { slug: orgSlug },
+    });
+
+    if (!org) {
+      org = await prisma.organization.create({
+        data: {
+          name: data.organization,
+          slug: orgSlug,
+        },
+      });
+    }
+
+    // Hash password and create user
+    const hashedPassword = await bcrypt.hash(data.password, 12);
+
+    const user = await prisma.user.create({
+      data: {
+        name: data.name,
+        email: data.email.toLowerCase().trim(),
+        password: hashedPassword,
+        role: data.role,
+        orgId: org.id,
+      },
+    });
+
     return NextResponse.json(
       {
         success: true,
         message: "Account created successfully. You can now sign in.",
         user: {
-          name: validatedData.name,
-          email: validatedData.email,
-          organization: validatedData.organization,
-          role: validatedData.role,
+          name: user.name,
+          email: user.email,
+          organization: org.name,
+          role: user.role,
         },
       },
       { status: 201 }
     );
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const firstError = error.issues[0];
       return NextResponse.json(
-        {
-          success: false,
-          message: firstError.message,
-        },
+        { success: false, message: error.issues[0].message },
         { status: 400 }
       );
     }
 
-    if (error instanceof Error) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: error.message,
-        },
-        { status: 400 }
-      );
-    }
-
+    console.error("[Register] Error:", error);
     return NextResponse.json(
-      {
-        success: false,
-        message: "An error occurred during registration",
-      },
+      { success: false, message: "An error occurred during registration" },
       { status: 500 }
     );
   }

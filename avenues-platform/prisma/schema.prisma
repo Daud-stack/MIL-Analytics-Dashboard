@@ -1,139 +1,103 @@
 // Avenues Clinic Intelligence Platform
-// Prisma schema — SQLite (dev), swap to PostgreSQL for production
+// Prisma schema — Vercel Postgres (Neon)
+// Connection URLs are configured in prisma.config.ts (Prisma 7+)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
 }
 
-model User {
-  id                String                @id @default(cuid())
-  email             String                @unique
-  name              String?
-  password          String?
-  role              String                @default("VIEWER") // ADMIN | ANALYST | VIEWER
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+// ─── Auth & Users ────────────────────────────────────────────
 
-  userOrganizations UserOrganization[]
-  uploads           DataUpload[]
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String? // bcrypt hash
+  role      String   @default("VIEWER") // ADMIN | ANALYST | VIEWER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orgId String?
+  org   Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  uploads DataUpload[]
 
   @@map("users")
 }
 
 model Organization {
-  id                String                @id @default(cuid())
-  name              String
-  slug              String                @unique
-  createdAt         DateTime              @default(now())
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
 
-  users             UserOrganization[]
-  dashboardData     DashboardData[]
-  doctorData        DoctorData[]
-  claimsData        ClaimsData[]
-  uploads           DataUpload[]
+  users     User[]
+  yearData  YearDataRecord[]
+  uploads   DataUpload[]
 
   @@map("organizations")
 }
 
-model UserOrganization {
-  id                String                @id @default(cuid())
-  userId            String
-  orgId             String
-  role              String                @default("member")
+// ─── Core Data ───────────────────────────────────────────────
 
-  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+/// One row per year per org — stores the full YearData blob as JSON.
+/// This maps 1:1 to the Zustand store's `Map<number, YearData>`.
+model YearDataRecord {
+  id    String @id @default(cuid())
+  year  Int
+  orgId String
 
-  @@unique([userId, orgId])
-  @@map("user_organizations")
+  /// Full dashboard metrics (admissions, revenue, theatre, pharmacy, etc.)
+  dashboard Json?
+
+  /// Location/Episode aggregates (doctors, ICD/CPT codes, specialties, rawRows)
+  location Json?
+
+  /// Claims aggregates (by scheme, doctor, month, rejection reasons)
+  claims Json?
+
+  /// Generic datasets uploaded via CSV
+  datasets Json? @default("{}")
+
+  /// Upload history records
+  uploads Json? @default("[]")
+
+  /// SHA-256 hashes of processed files (for dedup)
+  processedHashes String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([year, orgId])
+  @@index([orgId])
+  @@map("year_data")
 }
 
-model DataUpload {
-  id                String                @id @default(cuid())
-  fileName          String
-  fileType          String                // DASHBOARD | LOCATION | CLAIMS
-  year              Int
-  month             Int?
-  status            String                @default("PROCESSING") // PROCESSING | COMPLETE | ERROR
-  uploadedBy        String
-  orgId             String
-  createdAt         DateTime              @default(now())
+// ─── Upload Tracking ─────────────────────────────────────────
 
-  user              User                  @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
-  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+model DataUpload {
+  id         String   @id @default(cuid())
+  fileName   String
+  fileType   String // DASHBOARD | LOCATION | CLAIMS | GENERIC
+  fileHash   String? // SHA-256 for dedup
+  year       Int
+  rowCount   Int      @default(0)
+  status     String   @default("COMPLETE") // PROCESSING | COMPLETE | ERROR
+  uploadedBy String
+  orgId      String
+  createdAt  DateTime @default(now())
+
+  user User         @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([orgId])
   @@index([uploadedBy])
+  @@index([fileHash])
   @@map("data_uploads")
-}
-
-model DashboardData {
-  id                String                @id @default(cuid())
-  year              Int
-  month             Int
-  orgId             String
-  totalRevenue      Float
-  monthRevenue      String                // JSON array of 12 months
-  monthEpisodes     String                // JSON array of 12 months
-  admCasualty       String                // JSON array of 12 months
-  admDay            String                // JSON array of 12 months
-  admInpatient      String                // JSON array of 12 months
-  theatreCases      String                // JSON array of 12 months
-  theatreUtil       String                // JSON array of 12 months
-  theatrePctOcc     String                // JSON array of 12 months
-  pharmacyRx        String                // JSON array of 12 months
-  pharmacyRev       String                // JSON array of 12 months
-  occupancyBeds     String                // JSON array of 12 months
-  patientDays       String                // JSON object with location keys
-  createdAt         DateTime              @default(now())
-
-  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
-
-  @@unique([year, month, orgId])
-  @@index([orgId])
-  @@map("dashboard_data")
-}
-
-model DoctorData {
-  id                String                @id @default(cuid())
-  year              Int
-  orgId             String
-  name              String
-  specialty         String
-  episodes          Int
-  revenue           Float
-  avgLOS            Float
-  patients          Int
-
-  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
-
-  @@index([orgId])
-  @@map("doctor_data")
-}
-
-model ClaimsData {
-  id                String                @id @default(cuid())
-  year              Int
-  month             Int
-  orgId             String
-  totalClaims       Int
-  totalClaimed      Float
-  submitted         Int
-  received          Int
-  rejected          Int
-  approved          Int
-  pending           Int
-  scheme            String
-  status            String                @default("PENDING") // PENDING | APPROVED | REJECTED | RECEIVED
-  createdAt         DateTime              @default(now())
-
-  organization      Organization          @relation(fields: [orgId], references: [id], onDelete: Cascade)
-
-  @@index([orgId])
-  @@map("claims_data")
 }

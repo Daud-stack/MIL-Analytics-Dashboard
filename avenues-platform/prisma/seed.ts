@@ -1,9 +1,15 @@
+import "dotenv/config";
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log("🌱 Seeding database...");
+  console.log("Seeding database...");
 
   // Create default organization
   const org = await prisma.organization.upsert({
@@ -15,60 +21,51 @@ async function main() {
     },
   });
 
-  console.log("✅ Organization created:", org.name);
+  console.log("Organization created:", org.name);
 
-  // Create demo admin user (password: admin123)
-  // In production, use bcrypt to hash passwords
+  // Hash passwords
+  const adminHash = await bcrypt.hash("admin123", 12);
+  const analystHash = await bcrypt.hash("admin123", 12);
+
+  // Create admin user
   const admin = await prisma.user.upsert({
     where: { email: "admin@avenues.clinic" },
-    update: {},
+    update: { password: adminHash, orgId: org.id },
     create: {
       email: "admin@avenues.clinic",
       name: "Admin User",
-      password: "$2a$10$K7L1OJ45/4Y2nIvhRVpCe.FSmhDdWoXehVzJptJ/op0lSsvqNu7mO", // admin123
+      password: adminHash,
       role: "ADMIN",
+      orgId: org.id,
     },
   });
 
-  console.log("✅ Admin user created:", admin.email);
+  console.log("Admin user created:", admin.email);
 
-  // Create demo analyst user
+  // Create analyst user
   const analyst = await prisma.user.upsert({
     where: { email: "analyst@avenues.clinic" },
-    update: {},
+    update: { password: analystHash, orgId: org.id },
     create: {
       email: "analyst@avenues.clinic",
       name: "Data Analyst",
-      password: "$2a$10$K7L1OJ45/4Y2nIvhRVpCe.FSmhDdWoXehVzJptJ/op0lSsvqNu7mO", // admin123
+      password: analystHash,
       role: "ANALYST",
+      orgId: org.id,
     },
   });
 
-  console.log("✅ Analyst user created:", analyst.email);
+  console.log("Analyst user created:", analyst.email);
 
-  // Link users to organization
-  await prisma.userOrganization.upsert({
-    where: { userId_orgId: { userId: admin.id, orgId: org.id } },
-    update: {},
-    create: { userId: admin.id, orgId: org.id, role: "admin" },
-  });
-
-  await prisma.userOrganization.upsert({
-    where: { userId_orgId: { userId: analyst.id, orgId: org.id } },
-    update: {},
-    create: { userId: analyst.id, orgId: org.id, role: "member" },
-  });
-
-  console.log("✅ Users linked to organization");
-  console.log("\n🎉 Seeding complete!");
-  console.log("\n📋 Demo accounts:");
+  console.log("\nSeeding complete!");
+  console.log("\nDemo accounts:");
   console.log("   Admin:   admin@avenues.clinic   / admin123");
   console.log("   Analyst: analyst@avenues.clinic  / admin123");
 }
 
 main()
   .catch((e) => {
-    console.error("❌ Seeding failed:", e);
+    console.error("Seeding failed:", e);
     process.exit(1);
   })
   .finally(async () => {

@@ -1,14 +1,11 @@
 import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-
-// TODO: Import prisma client once database is set up
-// import { PrismaAdapter } from "@auth/prisma-adapter";
-// import prisma from "@/lib/prisma";
+import bcrypt from "bcryptjs";
+import prisma from "@/lib/prisma";
 
 /**
  * NextAuth configuration for Avenues Clinic Intelligence Platform
- * Currently uses Credentials provider for email/password authentication
- * Database integration will be added when Prisma is fully configured
+ * Credentials provider with bcrypt validation against Postgres
  */
 export const authConfig: NextAuthConfig = {
   pages: {
@@ -19,53 +16,36 @@ export const authConfig: NextAuthConfig = {
   providers: [
     Credentials({
       async authorize(credentials) {
-        // TODO: Implement database validation with bcrypt
-        // This is a placeholder implementation for credentials validation
-        // In production, validate against Prisma user model with password hashing
-
         if (!credentials?.email || !credentials?.password) {
-          throw new Error("Invalid credentials");
+          throw new Error("Email and password are required");
         }
 
-        // TODO: Query database like this:
-        // const user = await prisma.user.findUnique({
-        //   where: { email: credentials.email as string },
-        // });
-        //
-        // if (!user) {
-        //   throw new Error("User not found");
-        // }
-        //
-        // const passwordMatch = await bcrypt.compare(
-        //   credentials.password as string,
-        //   user.password || ""
-        // );
-        //
-        // if (!passwordMatch) {
-        //   throw new Error("Invalid password");
-        // }
-        //
-        // return {
-        //   id: user.id,
-        //   email: user.email,
-        //   name: user.name,
-        //   role: user.role,
-        // };
+        const email = (credentials.email as string).toLowerCase().trim();
+        const password = credentials.password as string;
 
-        // Placeholder credentials for development
-        if (
-          credentials.email === "admin@avenues.clinic" &&
-          credentials.password === "admin"
-        ) {
-          return {
-            id: "1",
-            email: "admin@avenues.clinic",
-            name: "Admin User",
-            role: "ADMIN",
-          };
+        const user = await prisma.user.findUnique({
+          where: { email },
+          include: { org: true },
+        });
+
+        if (!user || !user.password) {
+          throw new Error("Invalid email or password");
         }
 
-        throw new Error("Invalid credentials");
+        const passwordMatch = await bcrypt.compare(password, user.password);
+
+        if (!passwordMatch) {
+          throw new Error("Invalid email or password");
+        }
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name || undefined,
+          role: user.role as "ADMIN" | "ANALYST" | "VIEWER",
+          orgId: user.orgId || undefined,
+          orgName: user.org?.name || undefined,
+        };
       },
     }),
   ],
@@ -86,7 +66,9 @@ export const authConfig: NextAuthConfig = {
         token.id = user.id;
         token.email = user.email;
         token.name = user.name;
-        token.role = user.role || "VIEWER";
+        token.role = (user as AuthUser).role || "VIEWER";
+        token.orgId = (user as AuthUser).orgId;
+        token.orgName = (user as AuthUser).orgName;
       }
       return token;
     },
@@ -97,14 +79,14 @@ export const authConfig: NextAuthConfig = {
         session.user.email = token.email as string;
         session.user.name = token.name as string;
         session.user.role = token.role as "ADMIN" | "ANALYST" | "VIEWER";
+        session.user.orgId = token.orgId as string | undefined;
+        session.user.orgName = token.orgName as string | undefined;
       }
       return session;
     },
 
     async redirect({ url, baseUrl }) {
-      // Allows relative callback URLs
       if (url.startsWith("/")) return `${baseUrl}${url}`;
-      // Allows callback URLs on the same origin
       if (new URL(url).origin === baseUrl) return url;
       return baseUrl;
     },
@@ -112,26 +94,35 @@ export const authConfig: NextAuthConfig = {
 
   events: {
     async signIn({ user }) {
-      // TODO: Add logging for sign in events
-      console.log(`User signed in: ${user.email}`);
+      console.log(`[Auth] User signed in: ${user.email}`);
     },
-
     async signOut() {
-      // TODO: Add logging for sign out events
-      console.log("User signed out");
+      console.log("[Auth] User signed out");
     },
   },
 
   debug: process.env.NODE_ENV === "development",
 };
 
-// Type augmentation for next-auth
+// ─── Type Augmentation ─────────────────────────────────────
+
+interface AuthUser {
+  id: string;
+  email: string;
+  name?: string;
+  role: "ADMIN" | "ANALYST" | "VIEWER";
+  orgId?: string;
+  orgName?: string;
+}
+
 declare module "next-auth" {
   interface User {
     id: string;
     email: string;
     name?: string;
     role: "ADMIN" | "ANALYST" | "VIEWER";
+    orgId?: string;
+    orgName?: string;
   }
 
   interface Session {
@@ -145,5 +136,7 @@ declare module "next-auth" {
     email: string;
     name?: string;
     role: "ADMIN" | "ANALYST" | "VIEWER";
+    orgId?: string;
+    orgName?: string;
   }
 }

@@ -5,12 +5,15 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { FilterBar } from "@/components/layout/filter-bar";
 import { useIngestSync } from "@/hooks/useIngestSync";
+import { useDbSync } from "@/hooks/useDbSync";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Sync Zustand ↔ Vercel Postgres (source of truth)
+  useDbSync();
   // Auto-sync with file watcher's ingested data (polls /api/ingest every 10s)
   useIngestSync();
   return (
