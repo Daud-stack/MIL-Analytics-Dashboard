@@ -297,7 +297,7 @@ export default function AdmissionsPage() {
                       innerRadius={65}
                       outerRadius={110}
                       labelLine={false}
-                      label={({ name, value, percent }) => `${name}: ${formatNumber(value)} (${(percent * 100).toFixed(0)}%)`}
+                      label={({ name, value, percent }) => `${name}: ${formatNumber(value)} (${((percent ?? 0) * 100).toFixed(0)}%)`}
                       fill="#8884d8"
                       dataKey="value"
                     >
