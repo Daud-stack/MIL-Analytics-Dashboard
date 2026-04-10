@@ -155,6 +155,53 @@ export interface UploadRecord {
   action: 'replace' | 'append'; // was this a fresh load or an append?
 }
 
+// ===== GENERIC DATASET TYPES (column-based, schema-agnostic) =====
+
+export type ColumnType = 'numeric' | 'categorical' | 'date' | 'text' | 'boolean';
+
+/** Profile of a single column — computed on ingest */
+export interface ColumnProfile {
+  name: string;
+  type: ColumnType;
+  nonNull: number;         // count of non-null values
+  unique: number;          // count of distinct values
+  missing: number;         // count of null/empty values
+  // Numeric stats (only for numeric columns)
+  min?: number;
+  max?: number;
+  mean?: number;
+  median?: number;
+  std?: number;
+  sum?: number;
+  // Categorical stats (only for categorical/text)
+  topValues?: { value: string; count: number }[];
+  // Date stats
+  minDate?: string;
+  maxDate?: string;
+}
+
+/** A schema fingerprint — allows recognising the "same" file on re-upload */
+export interface DatasetSchema {
+  id: string;              // hash of sorted column names + types
+  columns: ColumnProfile[];
+  columnNames: string[];
+}
+
+/** One named, heterogeneous dataset stored in the app */
+export interface GenericDataset {
+  id: string;              // unique dataset id
+  name: string;            // user-friendly name (defaults to file name)
+  fileName: string;        // original file name
+  schemaId: string;        // links to DatasetSchema.id
+  schema: DatasetSchema;
+  uploadedAt: string;      // ISO timestamp
+  rowCount: number;
+  // Stored rows — kept lean: only first 2000 rows for in-browser analysis
+  rows: Record<string, unknown>[];
+  // Column-level aggregations for quick charting
+  columnProfiles: ColumnProfile[];
+}
+
 // Year data aggregation
 export interface YearData {
   year: number;
@@ -165,6 +212,7 @@ export interface YearData {
   apac: ClaimsMetrics | null;
   claims: ClaimsMetrics | null; // alias for consistency
   uploads: UploadRecord[];     // history of all files ingested for this year
+  datasets: Record<string, GenericDataset>; // key = dataset name/schemaId
 }
 
 // User & Auth Types
@@ -416,6 +464,8 @@ export interface StoreState {
   addYearData: (year: number, data: YearData) => void;
   removeYear: (year: number) => void;
   removeUpload: (year: number, uploadId: string) => void;
+  addDataset: (year: number, dataset: GenericDataset) => void;
+  removeDataset: (year: number, datasetId: string) => void;
   toggleCompare: (year: number) => void;
   clearCompare: () => void;
   setTheme: (theme: Theme) => void;

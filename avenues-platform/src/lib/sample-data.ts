@@ -443,6 +443,7 @@ export function generateSampleYearData(year: number): YearData {
     apac: generateSampleClaimsData(year),
     claims: generateSampleClaimsData(year),
     uploads: [],
+    datasets: {},
   };
 }
 

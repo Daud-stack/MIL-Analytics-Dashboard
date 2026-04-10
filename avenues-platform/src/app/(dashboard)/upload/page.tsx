@@ -4,14 +4,15 @@ import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, X, CheckCircle, AlertCircle, File, Zap, RefreshCw, Trash2, Clock, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAddYearData, useUploads, useRemoveUpload, useCurrentYear } from '@/store';
-import { YearData, UploadRecord, UploadCategory } from '@/types';
+import { useAddYearData, useUploads, useRemoveUpload, useCurrentYear, useDatasetList, useAddDataset, useRemoveDataset } from '@/store';
+import { YearData, UploadRecord, UploadCategory, GenericDataset } from '@/types';
 import { parseDashboardCSV, parseLocationCSV, parseClaimsCSV, detectYear, detectFacilityName } from '@/lib/parsers';
+import { parseGenericCSV } from '@/lib/generic-parser';
 
 interface FileUpload {
   id: string;
   file: File;
-  type: 'Dashboard' | 'Location' | 'Claims' | 'Unknown';
+  type: 'Dashboard' | 'Location' | 'Claims' | 'Generic' | 'Unknown';
   year: number;
   facilityName: string;
   progress: number;
@@ -20,6 +21,7 @@ interface FileUpload {
   columnScore: number;
   rowCount: number;
   parsedData?: YearData;
+  genericData?: GenericDataset;  // for generic/unrecognised CSVs
   debugInfo?: string;
 }
 
@@ -73,10 +75,11 @@ function detectYearFromAdmDates(csvText: string): number {
  * 4. Fallback: try each parser and use whichever produces meaningful data
  */
 function detectAndParse(csvText: string, manualYear: number | null): {
-  type: 'Dashboard' | 'Location' | 'Claims' | 'Unknown';
+  type: 'Dashboard' | 'Location' | 'Claims' | 'Generic' | 'Unknown';
   facilityName: string;
   year: number;
   parsedData: YearData | undefined;
+  genericData?: GenericDataset;
   rowCount: number;
   columnScore: number;
   debugInfo: string;
@@ -211,7 +214,34 @@ function detectAndParse(csvText: string, manualYear: number | null): {
     }
   } catch {}
 
-  // Nothing worked
+  // ====== STRATEGY 5: Generic CSV — auto-profile any CSV with columns ======
+  // If we have at least a header row and some data, ingest as a generic dataset
+  if (lines.length >= 2 && firstLine.includes(',')) {
+    try {
+      console.log('[Upload] Falling back to Generic CSV parser');
+      const year = manualYear || detectYear(csvText) || new Date().getFullYear();
+      // filename will be set later by the caller
+      const genericData = parseGenericCSV(csvText, 'unknown.csv');
+      const numCols = genericData.schema.columnNames.length;
+      const numericCols = genericData.columnProfiles.filter(c => c.type === 'numeric').length;
+      const score = Math.min(100, 50 + numericCols * 5);
+      console.log('[Upload] Generic CSV: ', genericData.rowCount, 'rows,', numCols, 'columns,', numericCols, 'numeric');
+      return {
+        type: 'Generic',
+        facilityName: 'Custom Dataset',
+        year,
+        parsedData: undefined,
+        genericData,
+        rowCount: genericData.rowCount,
+        columnScore: score,
+        debugInfo: `Generic: ${genericData.rowCount} rows, ${numCols} cols (${numericCols} numeric, ${genericData.columnProfiles.filter(c => c.type === 'categorical').length} categorical)`,
+      };
+    } catch (e) {
+      console.error('[Upload] Generic parse error:', e);
+    }
+  }
+
+  // Truly nothing worked
   return {
     type: 'Unknown',
     facilityName: 'Unknown',
@@ -231,7 +261,10 @@ export default function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addYearData = useAddYearData();
   const existingUploads = useUploads();
+  const existingDatasets = useDatasetList();
   const removeUpload = useRemoveUpload();
+  const addDataset = useAddDataset();
+  const removeDataset = useRemoveDataset();
   const currentYear = useCurrentYear();
   const router = useRouter();
 
@@ -295,6 +328,12 @@ export default function UploadPage() {
           console.log(`[Upload] Parsing file: ${file.name} (${csvText.length} chars)`);
           const result = detectAndParse(csvText, manualYear);
 
+          // For generic datasets, set the proper filename
+          if (result.genericData) {
+            result.genericData.fileName = file.name;
+            result.genericData.name = file.name.replace(/\.csv$/i, '').replace(/[_-]+/g, ' ').trim();
+          }
+
           setUploads(prev =>
             prev.map(u =>
               u.id === id
@@ -309,6 +348,7 @@ export default function UploadPage() {
                     status: result.type === 'Unknown' ? 'error' : 'complete',
                     error: result.type === 'Unknown' ? result.debugInfo : undefined,
                     parsedData: result.parsedData,
+                    genericData: result.genericData,
                     debugInfo: result.debugInfo,
                   }
                 : u
@@ -361,11 +401,18 @@ export default function UploadPage() {
       // Sort: Dashboard files first, then Location, then Claims
       // This ensures dashboard data is set before location/claims merge in
       const sorted = [...completed].sort((a, b) => {
-        const order = { Dashboard: 0, Location: 1, Claims: 2, Unknown: 3 };
-        return (order[a.type] || 3) - (order[b.type] || 3);
+        const order: Record<string, number> = { Dashboard: 0, Location: 1, Claims: 2, Generic: 3, Unknown: 4 };
+        return (order[a.type] ?? 4) - (order[b.type] ?? 4);
       });
 
       sorted.forEach(upload => {
+        // Handle Generic datasets separately
+        if (upload.type === 'Generic' && upload.genericData) {
+          console.log(`[Upload] Adding generic dataset "${upload.genericData.name}" for year ${upload.year}`);
+          addDataset(upload.year, upload.genericData);
+          return;
+        }
+
         if (upload.parsedData) {
           const uploadId = typeof crypto !== 'undefined' && crypto.randomUUID
             ? crypto.randomUUID()
@@ -591,6 +638,19 @@ export default function UploadPage() {
                           <div>Total Claims: {upload.parsedData.claims.totalClaims.toLocaleString()}</div>
                           <div>Total Claimed: ${upload.parsedData.claims.totalClaimed.toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
                         </div>
+                      </div>
+                    )}
+
+                    {upload.status === 'complete' && upload.type === 'Generic' && upload.genericData && (
+                      <div className="mt-3 rounded-lg bg-violet-50 p-3 text-xs text-violet-800">
+                        <p className="font-semibold mb-1">Generic Dataset Preview:</p>
+                        <div className="grid grid-cols-2 gap-1">
+                          <div>Rows: {upload.genericData.rowCount.toLocaleString()}</div>
+                          <div>Columns: {upload.genericData.schema.columnNames.length}</div>
+                          <div>Numeric: {upload.genericData.columnProfiles.filter(c => c.type === 'numeric').length}</div>
+                          <div>Categorical: {upload.genericData.columnProfiles.filter(c => c.type === 'categorical').length}</div>
+                        </div>
+                        <p className="mt-1 text-[10px] text-violet-600">Cols: {upload.genericData.schema.columnNames.slice(0, 8).join(', ')}{upload.genericData.schema.columnNames.length > 8 ? '...' : ''}</p>
                       </div>
                     )}
 

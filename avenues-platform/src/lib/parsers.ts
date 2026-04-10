@@ -546,6 +546,7 @@ export function parseDashboardCSV(csvText: string): YearData {
     apac: null,
     claims: null,
     uploads: [],
+    datasets: {},
   };
 }
 
@@ -575,6 +576,7 @@ export function parseLocationCSV(csvText: string): YearData {
       loc: null, location: null,
       apac: null, claims: null,
       uploads: [],
+      datasets: {},
     };
   }
 
@@ -762,6 +764,7 @@ export function parseLocationCSV(csvText: string): YearData {
     loc: metrics, location: metrics,
     apac: null, claims: null,
     uploads: [],
+    datasets: {},
   };
 }
 
@@ -789,6 +792,7 @@ export function parseClaimsCSV(csvText: string): YearData {
       loc: null, location: null,
       apac: null, claims: null,
       uploads: [],
+      datasets: {},
     };
   }
 
@@ -906,6 +910,7 @@ export function parseClaimsCSV(csvText: string): YearData {
     loc: null, location: null,
     apac: metrics, claims: metrics,
     uploads: [],
+    datasets: {},
   };
 }
 
@@ -935,6 +940,7 @@ export function autoParseCSV(csvText: string): YearData {
         apac: null,
         claims: null,
         uploads: [],
+        datasets: {},
       };
   }
 }

@@ -103,6 +103,7 @@ const sections: SidebarSection[] = [
     title: "DATA",
     key: "data",
     items: [
+      { label: "Dataset Explorer", href: "/dataset-explorer", icon: Database },
       { label: "Data Quality", href: "/data-qa", icon: ShieldCheck },
       { label: "Robust Data", href: "/data-robust", icon: Database },
       { label: "Search", href: "/search", icon: Search },

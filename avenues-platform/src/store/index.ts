@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { StoreState, FilterState, YearData, Theme, MONTHS, DashboardMetrics, UploadRecord } from '@/types';
+import { StoreState, FilterState, YearData, Theme, MONTHS, DashboardMetrics, UploadRecord, GenericDataset } from '@/types';
 
 const currentYear = new Date().getFullYear();
 
@@ -258,6 +258,7 @@ export const useStore = create<StoreState>()(
             apac: mergedClaims,
             claims: mergedClaims,
             uploads: mergedUploads,
+            datasets: { ...(existing.datasets || {}), ...(normalizedData.datasets || {}) },
           };
           newYears.set(year, merged);
           return { years: newYears, currentYear: year };
@@ -305,6 +306,42 @@ export const useStore = create<StoreState>()(
           }
 
           newYears.set(year, updated);
+          return { years: newYears };
+        });
+      },
+
+      addDataset: (year: number, dataset: GenericDataset) => {
+        set((state) => {
+          const newYears = new Map(state.years);
+          const existing = newYears.get(year) || {
+            year, dash: null, dashboard: null, loc: null, location: null,
+            apac: null, claims: null, uploads: [], datasets: {},
+          };
+          const datasets = { ...(existing.datasets || {}) };
+
+          // If same schema already exists, merge (append with dedup)
+          const existingDs = Object.values(datasets).find(d => d.schemaId === dataset.schemaId);
+          if (existingDs) {
+            // Import mergeDatasets lazily to avoid circular deps
+            const { mergeDatasets } = require('@/lib/generic-parser');
+            datasets[existingDs.id] = mergeDatasets(existingDs, dataset);
+          } else {
+            datasets[dataset.id] = dataset;
+          }
+
+          newYears.set(year, { ...existing, datasets });
+          return { years: newYears, currentYear: year };
+        });
+      },
+
+      removeDataset: (year: number, datasetId: string) => {
+        set((state) => {
+          const newYears = new Map(state.years);
+          const existing = newYears.get(year);
+          if (!existing) return state;
+          const datasets = { ...(existing.datasets || {}) };
+          delete datasets[datasetId];
+          newYears.set(year, { ...existing, datasets });
           return { years: newYears };
         });
       },
@@ -416,6 +453,7 @@ export const useStore = create<StoreState>()(
                   apac: data.apac,
                   claims: data.claims,
                   uploads: data.uploads || [],
+                  datasets: data.datasets || {},
                 },
               ]);
             } else {
@@ -553,3 +591,19 @@ export const useUploads = () =>
     const yearData = state.years.get(state.currentYear);
     return yearData?.uploads || [];
   });
+
+// Generic datasets for current year
+export const useDatasets = () =>
+  useStore((state) => {
+    const yearData = state.years.get(state.currentYear);
+    return yearData?.datasets || {};
+  });
+
+export const useDatasetList = () =>
+  useStore((state) => {
+    const yearData = state.years.get(state.currentYear);
+    return Object.values(yearData?.datasets || {});
+  });
+
+export const useAddDataset = () => useStore((state) => state.addDataset);
+export const useRemoveDataset = () => useStore((state) => state.removeDataset);
