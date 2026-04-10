@@ -15,7 +15,9 @@
     "setup": "npm install && npx prisma generate && npx prisma db push && npm run dev",
     "docker:dev": "docker compose up --build",
     "docker:prod": "docker compose -f docker-compose.prod.yml up --build -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "watch:files": "tsx scripts/file-watcher.ts",
+    "watch:files:bg": "tsx scripts/file-watcher.ts &"
   },
   "dependencies": {
     "@next/swc-linux-x64-gnu": "^16.2.2",
@@ -33,7 +35,9 @@
     "recharts": "^3.8.1",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.3.6",
-    "zustand": "^5.0.12"
+    "zustand": "^5.0.12",
+    "chokidar": "^4.0.3",
+    "immer": "^10.1.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -46,6 +50,7 @@
     "eslint-config-next": "16.2.2",
     "prisma": "^5.22.0",
     "tailwindcss": "^4",
+    "tsx": "^4.19.0",
     "typescript": "^5"
   },
   "description": "This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).",

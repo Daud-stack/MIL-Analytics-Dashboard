@@ -4,12 +4,15 @@ import React from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { FilterBar } from "@/components/layout/filter-bar";
+import { useIngestSync } from "@/hooks/useIngestSync";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Auto-sync with file watcher's ingested data (polls /api/ingest every 10s)
+  useIngestSync();
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-slate-950">
       {/* Sidebar — always in flow on desktop */}

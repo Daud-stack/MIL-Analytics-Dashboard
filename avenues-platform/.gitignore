@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# auto-ingest data store and folders
+/data/
+/uploads/*.csv
+/archived/

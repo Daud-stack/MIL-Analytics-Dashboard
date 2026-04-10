@@ -2,7 +2,8 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { StoreState, FilterState, YearData, Theme, MONTHS, DashboardMetrics, UploadRecord, GenericDataset } from '@/types';
+import { produce } from 'immer';
+import { StoreState, FilterState, YearData, Theme, MONTHS, DashboardMetrics, UploadRecord, GenericDataset, ClaimsMetrics, LocationData, ClaimSchemeData, DailyDataPatch } from '@/types';
 
 const currentYear = new Date().getFullYear();
 
@@ -152,103 +153,296 @@ export const useStore = create<StoreState>()(
             return { years: newYears, currentYear: year };
           }
 
-          // ── MERGE with existing year data ──
-          // Strategy per category:
-          //   Dashboard → REPLACE (aggregate metrics, re-uploading = correction)
-          //   Location  → APPEND  (row-level, daily updates add new episodes)
-          //   Claims    → APPEND  (row-level, daily updates add new claims)
+          // ════════════════════════════════════════════════════════
+          // ── DEEP MERGE with existing year data ──
+          //
+          // Core principle: uploading one file type must NEVER wipe
+          // another type's data. We merge per-category:
+          //
+          //   Dashboard → ADDITIVE  (sum monthly arrays for daily updates)
+          //   Location  → APPEND    (add new episodes, increment ICD counts)
+          //   Claims    → APPEND    (add new claims, increment scheme counts)
+          //   Datasets  → APPEND    (add new generic datasets)
+          // ════════════════════════════════════════════════════════
 
-          // Dashboard: latest upload always wins (no additive doubling)
-          const mergedDashboard = normalizedData.dashboard || existing.dashboard;
+          // ──────────────────────────────────────────────────────
+          // HELPER: Add two 12-element monthly arrays element-wise
+          // ──────────────────────────────────────────────────────
+          const addArrays = (a: number[], b: number[]): number[] =>
+            Array.from({ length: 12 }, (_, i) => (a[i] || 0) + (b[i] || 0));
 
-          // Location: APPEND — merge aggregates, dedup doctors by name
-          let mergedLocation = normalizedData.location || existing.location;
+          // Take element-wise max (dedup-safe for re-uploads of same file)
+          const maxArrays = (a: number[], b: number[]): number[] =>
+            Array.from({ length: 12 }, (_, i) => Math.max(a[i] || 0, b[i] || 0));
+
+          // Merge Record<string, number> maps by incrementing counts
+          const incrementCountMap = (
+            a: Record<string, number>,
+            b: Record<string, number>
+          ): Record<string, number> => {
+            const result = { ...a };
+            for (const [k, v] of Object.entries(b)) {
+              result[k] = (result[k] || 0) + v;
+            }
+            return result;
+          };
+
+          // Merge Record<string, {count, desc}> maps by incrementing counts
+          const incrementCodeMap = (
+            a: Record<string, { count: number; desc: string }>,
+            b: Record<string, { count: number; desc: string }>
+          ): Record<string, { count: number; desc: string }> => {
+            const result = { ...a };
+            for (const [code, info] of Object.entries(b)) {
+              if (result[code]) {
+                result[code] = {
+                  count: result[code].count + info.count,
+                  desc: info.desc || result[code].desc,
+                };
+              } else {
+                result[code] = { ...info };
+              }
+            }
+            return result;
+          };
+
+          // Merge Record<string, number[]> by adding arrays per key
+          const mergeRecordArrays = (
+            a: Record<string, number[]>,
+            b: Record<string, number[]>
+          ): Record<string, number[]> => {
+            const result = { ...a };
+            for (const [k, bArr] of Object.entries(b)) {
+              if (result[k]) {
+                result[k] = addArrays(result[k], bArr);
+              } else {
+                result[k] = [...bArr];
+              }
+            }
+            return result;
+          };
+
+          // ──────────────────────────────────────────────────────
+          // 1. DASHBOARD: Additive merge for daily updates
+          //    New monthly data gets ADDED to existing totals.
+          //    If only one side has data, use that side.
+          // ──────────────────────────────────────────────────────
+          let mergedDashboard: DashboardMetrics | null = existing.dashboard;
+
+          if (normalizedData.dashboard && existing.dashboard) {
+            const a = existing.dashboard;
+            const b = normalizedData.dashboard;
+
+            // All number[] fields that should be summed
+            const monthRevenue = addArrays(a.monthRevenue, b.monthRevenue);
+            const monthEpisodes = addArrays(a.monthEpisodes, b.monthEpisodes);
+
+            mergedDashboard = {
+              ...b,
+              year,
+              totalRevenue: a.totalRevenue + b.totalRevenue,
+              monthRevenue,
+              monthEpisodes,
+              admCasualty: addArrays(a.admCasualty, b.admCasualty),
+              admDay: addArrays(a.admDay, b.admDay),
+              admInpatient: addArrays(a.admInpatient, b.admInpatient),
+              admLab: addArrays(a.admLab, b.admLab),
+              theatreCases: addArrays(a.theatreCases, b.theatreCases),
+              theatreMinutes: addArrays(a.theatreMinutes, b.theatreMinutes),
+              theatreUtil: maxArrays(a.theatreUtil, b.theatreUtil), // % — take max
+              theatrePctOcc: maxArrays(a.theatrePctOcc, b.theatrePctOcc), // % — take max
+              pharmacyRx: addArrays(a.pharmacyRx, b.pharmacyRx),
+              pharmacyRev: addArrays(a.pharmacyRev, b.pharmacyRev),
+              occupancyBeds: maxArrays(a.occupancyBeds, b.occupancyBeds), // % — take max
+              occMidnight: addArrays(a.occMidnight, b.occMidnight),
+              casToInpatient: addArrays(a.casToInpatient, b.casToInpatient),
+              epsFinalised: addArrays(a.epsFinalised, b.epsFinalised),
+              dischNotFinalised: addArrays(a.dischNotFinalised, b.dischNotFinalised),
+              revPerPatDay: maxArrays(a.revPerPatDay, b.revPerPatDay), // rate — take max
+              gpEthical: maxArrays(a.gpEthical, b.gpEthical), // % — take max
+              gpSurgical: maxArrays(a.gpSurgical, b.gpSurgical), // % — take max
+              prescriptionsHospital: addArrays(a.prescriptionsHospital, b.prescriptionsHospital),
+              prescriptionsRetail: addArrays(a.prescriptionsRetail, b.prescriptionsRetail),
+              prescriptionsRevHospital: addArrays(a.prescriptionsRevHospital, b.prescriptionsRevHospital),
+              prescriptionsRevRetail: addArrays(a.prescriptionsRevRetail, b.prescriptionsRevRetail),
+              dischNotFinalisedValue: addArrays(a.dischNotFinalisedValue, b.dischNotFinalisedValue),
+              accountSundries: addArrays(a.accountSundries, b.accountSundries),
+              // Record<string, number[]> fields — additive merge per key
+              patientDays: mergeRecordArrays(a.patientDays, b.patientDays),
+              pctOccWard: mergeRecordArrays(a.pctOccWard, b.pctOccWard),
+              patDaysWard: mergeRecordArrays(a.patDaysWard, b.patDaysWard),
+              patDaysLOC: mergeRecordArrays(a.patDaysLOC, b.patDaysLOC),
+              admPerWard: mergeRecordArrays(a.admPerWard, b.admPerWard),
+              revLocation: mergeRecordArrays(a.revLocation, b.revLocation),
+              rawColumns: mergeRecordArrays(a.rawColumns, b.rawColumns),
+              discharges: mergeRecordArrays(a.discharges, b.discharges),
+              dischargesPerWard: mergeRecordArrays(a.dischargesPerWard, b.dischargesPerWard),
+              patientsAtMidday: mergeRecordArrays(a.patientsAtMidday, b.patientsAtMidday),
+              billedPatDays: mergeRecordArrays(a.billedPatDays, b.billedPatDays),
+              cosLocation: mergeRecordArrays(a.cosLocation, b.cosLocation),
+              gpEthicalPerLoc: mergeRecordArrays(a.gpEthicalPerLoc, b.gpEthicalPerLoc),
+              gpSurgicalPerLoc: mergeRecordArrays(a.gpSurgicalPerLoc, b.gpSurgicalPerLoc),
+              revPerRevCentre: mergeRecordArrays(a.revPerRevCentre, b.revPerRevCentre),
+              chargeableItems: mergeRecordArrays(a.chargeableItems, b.chargeableItems),
+              nonChargeableItems: mergeRecordArrays(a.nonChargeableItems, b.nonChargeableItems),
+              stockReceiptsDiscount: mergeRecordArrays(a.stockReceiptsDiscount, b.stockReceiptsDiscount),
+              stockReceipts: mergeRecordArrays(a.stockReceipts, b.stockReceipts),
+              stockReceiptsValue: mergeRecordArrays(a.stockReceiptsValue, b.stockReceiptsValue),
+              // Nested objects — additive
+              debtRecon: {
+                brought: addArrays(a.debtRecon.brought, b.debtRecon.brought),
+                revenue: addArrays(a.debtRecon.revenue, b.debtRecon.revenue),
+                payments: addArrays(a.debtRecon.payments, b.debtRecon.payments),
+                sundries: addArrays(a.debtRecon.sundries, b.debtRecon.sundries),
+                total: addArrays(a.debtRecon.total, b.debtRecon.total),
+              },
+              payments: {
+                deposits: addArrays(a.payments.deposits, b.payments.deposits),
+                individual: addArrays(a.payments.individual, b.payments.individual),
+                medAid: addArrays(a.payments.medAid, b.payments.medAid),
+                batched: addArrays(a.payments.batched, b.payments.batched),
+              },
+            };
+          } else if (normalizedData.dashboard) {
+            mergedDashboard = normalizedData.dashboard;
+          }
+
+          // ──────────────────────────────────────────────────────
+          // 2. LOCATION: Append — increment ICD/CPT counts,
+          //    add episodes/revenue, merge doctors
+          // ──────────────────────────────────────────────────────
+          let mergedLocation: LocationData | null = existing.location;
+
           if (normalizedData.location && existing.location) {
             const a = existing.location;
             const b = normalizedData.location;
 
-            // Merge doctors by name: if doctor exists, take the HIGHER values (dedup-safe)
+            // Merge doctors by name: additive (sum episodes, revenue, patients)
             const docMap = new Map<string, typeof a.doctors[0]>();
-            for (const d of a.doctors) docMap.set(d.name, d);
+            for (const d of a.doctors) docMap.set(d.name, { ...d });
             for (const d of b.doctors) {
               const ex = docMap.get(d.name);
               if (ex) {
-                // Dedup: take the max of each aggregate (handles re-upload of same file)
                 docMap.set(d.name, {
                   ...d,
-                  episodes: Math.max(ex.episodes, d.episodes),
-                  revenue: Math.max(ex.revenue, d.revenue),
-                  avgLOS: d.avgLOS || ex.avgLOS,
-                  patients: Math.max(ex.patients, d.patients),
+                  episodes: ex.episodes + d.episodes,
+                  revenue: ex.revenue + d.revenue,
+                  avgLOS: (ex.avgLOS + d.avgLOS) / 2,
+                  patients: ex.patients + d.patients,
                 });
               } else {
-                docMap.set(d.name, d);
+                docMap.set(d.name, { ...d });
               }
             }
-
-            // Merge code maps (dedup by key — take max count)
-            const mergeCodeMaps = (
-              x: Record<string, { count: number; desc: string }>,
-              y: Record<string, { count: number; desc: string }>
-            ) => {
-              const result = { ...x };
-              for (const [code, info] of Object.entries(y)) {
-                if (result[code]) {
-                  result[code] = { count: Math.max(result[code].count, info.count), desc: info.desc || result[code].desc };
-                } else {
-                  result[code] = info;
-                }
-              }
-              return result;
-            };
-
-            // Merge simple count maps (take max for dedup safety)
-            const mergeCountMaps = (x: Record<string, number>, y: Record<string, number>) => {
-              const result = { ...x };
-              for (const [k, v] of Object.entries(y)) {
-                result[k] = Math.max(result[k] || 0, v);
-              }
-              return result;
-            };
-
-            // Merge monthly arrays: element-wise max (dedup-safe for same-file re-upload)
-            const maxArrays = (x: number[], y: number[]) =>
-              Array.from({ length: 12 }, (_, i) => Math.max(x[i] || 0, y[i] || 0));
-
-            // For truly NEW data (different date ranges), use additive merge
-            // Heuristic: if total episodes differ significantly, it's new data → add
-            const isNewData = Math.abs(a.episodes - b.episodes) > (a.episodes * 0.1);
-            const addArrays = (x: number[], y: number[]) => x.map((v, i) => v + (y[i] || 0));
-            const mergeArrays = isNewData ? addArrays : maxArrays;
 
             mergedLocation = {
               ...b,
               year,
-              episodes: isNewData ? a.episodes + b.episodes : Math.max(a.episodes, b.episodes),
-              totalRevenue: isNewData ? a.totalRevenue + b.totalRevenue : Math.max(a.totalRevenue, b.totalRevenue),
-              monthEpisodes: mergeArrays(a.monthEpisodes, b.monthEpisodes),
-              monthRevenue: mergeArrays(a.monthRevenue, b.monthRevenue),
+              episodes: a.episodes + b.episodes,
+              totalRevenue: a.totalRevenue + b.totalRevenue,
+              monthEpisodes: addArrays(a.monthEpisodes, b.monthEpisodes),
+              monthRevenue: addArrays(a.monthRevenue, b.monthRevenue),
               doctors: Array.from(docMap.values()).sort((x, y) => y.revenue - x.revenue),
-              icdCodes: mergeCodeMaps(a.icdCodes, b.icdCodes),
-              cptCodes: mergeCodeMaps(a.cptCodes, b.cptCodes),
-              specialties: mergeCountMaps(a.specialties, b.specialties),
-              medAids: mergeCountMaps(a.medAids, b.medAids),
-              ageGroups: mergeCountMaps(a.ageGroups, b.ageGroups),
-              genders: mergeCountMaps(a.genders, b.genders),
-              los: mergeCountMaps(a.los, b.los),
+              icdCodes: incrementCodeMap(a.icdCodes, b.icdCodes),
+              cptCodes: incrementCodeMap(a.cptCodes, b.cptCodes),
+              specialties: incrementCountMap(a.specialties, b.specialties),
+              medAids: incrementCountMap(a.medAids, b.medAids),
+              ageGroups: incrementCountMap(a.ageGroups, b.ageGroups),
+              genders: incrementCountMap(a.genders, b.genders),
+              los: incrementCountMap(a.los, b.los),
               rawRows: [...(a.rawRows || []), ...(b.rawRows || [])],
             };
+          } else if (normalizedData.location) {
+            mergedLocation = normalizedData.location;
           }
 
-          // Claims: latest upload replaces (append not yet needed)
-          const mergedClaims = normalizedData.claims || existing.claims;
+          // ──────────────────────────────────────────────────────
+          // 3. CLAIMS: Append — sum totals, increment scheme/doctor
+          //    counts, merge monthly arrays, merge rejection reasons
+          // ──────────────────────────────────────────────────────
+          let mergedClaims: ClaimsMetrics | null = existing.claims;
 
-          // Merge upload history
+          if (normalizedData.claims && existing.claims) {
+            const a = existing.claims;
+            const b = normalizedData.claims;
+
+            // Merge byScheme: increment each scheme's sub-totals
+            const mergedByScheme: Record<string, ClaimSchemeData> = { ...a.byScheme };
+            for (const [scheme, bData] of Object.entries(b.byScheme)) {
+              const ex = mergedByScheme[scheme];
+              if (ex) {
+                mergedByScheme[scheme] = {
+                  totalClaimed: ex.totalClaimed + bData.totalClaimed,
+                  submitted: ex.submitted + bData.submitted,
+                  received: ex.received + bData.received,
+                  rejected: ex.rejected + bData.rejected,
+                  approved: ex.approved + bData.approved,
+                  pending: ex.pending + bData.pending,
+                };
+              } else {
+                mergedByScheme[scheme] = { ...bData };
+              }
+            }
+
+            // Merge byDoctor: increment claims/approved/amount per doctor
+            const mergedByDoctor: Record<string, { claims: number; approved: number; amount: number }> = { ...a.byDoctor };
+            for (const [doc, bData] of Object.entries(b.byDoctor)) {
+              const ex = mergedByDoctor[doc];
+              if (ex) {
+                mergedByDoctor[doc] = {
+                  claims: ex.claims + bData.claims,
+                  approved: ex.approved + bData.approved,
+                  amount: ex.amount + bData.amount,
+                };
+              } else {
+                mergedByDoctor[doc] = { ...bData };
+              }
+            }
+
+            mergedClaims = {
+              ...b,
+              year,
+              totalClaims: a.totalClaims + b.totalClaims,
+              totalClaimed: a.totalClaimed + b.totalClaimed,
+              submitted: a.submitted + b.submitted,
+              received: a.received + b.received,
+              rejected: a.rejected + b.rejected,
+              approved: a.approved + b.approved,
+              pending: a.pending + b.pending,
+              byScheme: mergedByScheme,
+              byStatus: incrementCountMap(a.byStatus, b.byStatus),
+              byMonth: incrementCountMap(
+                a.byMonth as unknown as Record<string, number>,
+                b.byMonth as unknown as Record<string, number>
+              ) as unknown as Record<number, number>,
+              byDoctor: mergedByDoctor,
+              totalClaims_monthly: addArrays(a.totalClaims_monthly, b.totalClaims_monthly),
+              approvedClaims_monthly: addArrays(a.approvedClaims_monthly, b.approvedClaims_monthly),
+              rejectedClaims_monthly: addArrays(a.rejectedClaims_monthly, b.rejectedClaims_monthly),
+              pendingClaims_monthly: addArrays(a.pendingClaims_monthly, b.pendingClaims_monthly),
+              claimAmounts_monthly: addArrays(a.claimAmounts_monthly, b.claimAmounts_monthly),
+              rejectionReasons: incrementCountMap(a.rejectionReasons, b.rejectionReasons),
+            };
+          } else if (normalizedData.claims) {
+            mergedClaims = normalizedData.claims;
+          }
+
+          // ──────────────────────────────────────────────────────
+          // 4. UPLOADS + DATASETS: Always append
+          // ──────────────────────────────────────────────────────
           const mergedUploads = [
             ...(existing.uploads || []),
             ...(normalizedData.uploads || []),
           ];
 
+          const mergedDatasets = {
+            ...(existing.datasets || {}),
+            ...(normalizedData.datasets || {}),
+          };
+
+          // ──────────────────────────────────────────────────────
+          // ASSEMBLE the merged YearData
+          // ──────────────────────────────────────────────────────
           const merged: YearData = {
             year,
             dash: mergedDashboard,
@@ -258,10 +452,169 @@ export const useStore = create<StoreState>()(
             apac: mergedClaims,
             claims: mergedClaims,
             uploads: mergedUploads,
-            datasets: { ...(existing.datasets || {}), ...(normalizedData.datasets || {}) },
+            datasets: mergedDatasets,
           };
           newYears.set(year, merged);
           return { years: newYears, currentYear: year };
+        });
+      },
+
+      // ════════════════════════════════════════════════════════════
+      // appendDailyData — Lightweight incremental update for a single day.
+      // Uses Immer's `produce` for safe deep nested mutations.
+      // Called by the file watcher for daily data ingests.
+      // ════════════════════════════════════════════════════════════
+      appendDailyData: (year: number, monthIndex: number, patch: DailyDataPatch) => {
+        set((state) => {
+          const newYears = new Map(state.years);
+          const existing = newYears.get(year);
+          if (!existing) return state; // no year data yet — use addYearData for first load
+
+          const mi = Math.max(0, Math.min(11, monthIndex)); // clamp to 0–11
+
+          // Use Immer produce for safe deep nested mutations
+          const updated = produce(existing, (draft) => {
+            // ── Dashboard increments ──
+            if (patch.admissions && draft.dashboard) {
+              const d = draft.dashboard;
+              if (patch.admissions.casualty) d.admCasualty[mi] += patch.admissions.casualty;
+              if (patch.admissions.day) d.admDay[mi] += patch.admissions.day;
+              if (patch.admissions.inpatient) d.admInpatient[mi] += patch.admissions.inpatient;
+              if (patch.admissions.lab) d.admLab[mi] += patch.admissions.lab;
+            }
+
+            if (patch.revenue && draft.dashboard) {
+              draft.dashboard.monthRevenue[mi] += patch.revenue;
+              draft.dashboard.totalRevenue += patch.revenue;
+            }
+
+            if (patch.theatreCases && draft.dashboard) {
+              draft.dashboard.theatreCases[mi] += patch.theatreCases;
+            }
+
+            if (patch.theatreMinutes && draft.dashboard) {
+              draft.dashboard.theatreMinutes[mi] += patch.theatreMinutes;
+            }
+
+            if (patch.pharmacyRx && draft.dashboard) {
+              draft.dashboard.pharmacyRx[mi] += patch.pharmacyRx;
+            }
+
+            if (patch.pharmacyRev && draft.dashboard) {
+              draft.dashboard.pharmacyRev[mi] += patch.pharmacyRev;
+            }
+
+            if (patch.epsFinalised && draft.dashboard) {
+              draft.dashboard.epsFinalised[mi] += patch.epsFinalised;
+              draft.dashboard.monthEpisodes[mi] += patch.epsFinalised;
+            }
+
+            if (patch.payments && draft.dashboard) {
+              const p = draft.dashboard.payments;
+              if (patch.payments.deposits) p.deposits[mi] += patch.payments.deposits;
+              if (patch.payments.individual) p.individual[mi] += patch.payments.individual;
+              if (patch.payments.medAid) p.medAid[mi] += patch.payments.medAid;
+              if (patch.payments.batched) p.batched[mi] += patch.payments.batched;
+            }
+
+            if (patch.wardAdmissions && draft.dashboard) {
+              for (const [ward, count] of Object.entries(patch.wardAdmissions)) {
+                if (!draft.dashboard.admPerWard[ward]) {
+                  draft.dashboard.admPerWard[ward] = new Array(12).fill(0);
+                }
+                draft.dashboard.admPerWard[ward][mi] += count;
+              }
+            }
+
+            if (patch.discharges && draft.dashboard) {
+              for (const [type, count] of Object.entries(patch.discharges)) {
+                if (!draft.dashboard.discharges[type]) {
+                  draft.dashboard.discharges[type] = new Array(12).fill(0);
+                }
+                draft.dashboard.discharges[type][mi] += count;
+              }
+            }
+
+            // Sync dash alias
+            if (draft.dashboard) draft.dash = draft.dashboard;
+
+            // ── Location increments ──
+            if (draft.location) {
+              if (patch.newEpisodes) {
+                draft.location.episodes += patch.newEpisodes;
+                draft.location.monthEpisodes[mi] += patch.newEpisodes;
+              }
+              if (patch.newLocationRevenue) {
+                draft.location.totalRevenue += patch.newLocationRevenue;
+                draft.location.monthRevenue[mi] += patch.newLocationRevenue;
+              }
+              if (patch.newIcdCodes) {
+                for (const [code, info] of Object.entries(patch.newIcdCodes)) {
+                  if (draft.location.icdCodes[code]) {
+                    draft.location.icdCodes[code].count += info.count;
+                  } else {
+                    draft.location.icdCodes[code] = { ...info };
+                  }
+                }
+              }
+              if (patch.newCptCodes) {
+                for (const [code, info] of Object.entries(patch.newCptCodes)) {
+                  if (draft.location.cptCodes[code]) {
+                    draft.location.cptCodes[code].count += info.count;
+                  } else {
+                    draft.location.cptCodes[code] = { ...info };
+                  }
+                }
+              }
+              // Sync loc alias
+              draft.loc = draft.location;
+            }
+
+            // ── Claims increments ──
+            if (patch.newClaims && draft.claims) {
+              const c = draft.claims;
+              if (patch.newClaims.total) {
+                c.totalClaims += patch.newClaims.total;
+                c.totalClaims_monthly[mi] += patch.newClaims.total;
+              }
+              if (patch.newClaims.approved) {
+                c.approved += patch.newClaims.approved;
+                c.approvedClaims_monthly[mi] += patch.newClaims.approved;
+              }
+              if (patch.newClaims.rejected) {
+                c.rejected += patch.newClaims.rejected;
+                c.rejectedClaims_monthly[mi] += patch.newClaims.rejected;
+              }
+              if (patch.newClaims.pending) {
+                c.pending += patch.newClaims.pending;
+                c.pendingClaims_monthly[mi] += patch.newClaims.pending;
+              }
+              if (patch.newClaims.amount) {
+                c.totalClaimed += patch.newClaims.amount;
+                c.claimAmounts_monthly[mi] += patch.newClaims.amount;
+              }
+            }
+
+            if (patch.newClaimsByScheme && draft.claims) {
+              for (const [scheme, data] of Object.entries(patch.newClaimsByScheme)) {
+                if (!draft.claims.byScheme[scheme]) {
+                  draft.claims.byScheme[scheme] = {
+                    totalClaimed: 0, submitted: 0, received: 0,
+                    rejected: 0, approved: 0, pending: 0,
+                  };
+                }
+                const s = draft.claims.byScheme[scheme];
+                s.totalClaimed += data.claimed;
+                s.approved += data.approved;
+                s.rejected += data.rejected;
+              }
+              // Sync apac alias
+              draft.apac = draft.claims;
+            }
+          });
+
+          newYears.set(year, updated);
+          return { years: newYears };
         });
       },
 
@@ -454,21 +807,11 @@ export const useStore = create<StoreState>()(
           try {
             const stateToSave: Record<string, unknown> = { ...value.state };
             // Handle Map serialization if years exists and is a Map
+            // Passthrough ALL YearData fields (no manual list — future-proof)
             if (stateToSave.years instanceof Map) {
-              stateToSave.years = Array.from((stateToSave.years as Map<number, YearData>).entries()).map(([year, data]) => [
-                year,
-                {
-                  year: data.year,
-                  dash: data.dash,
-                  dashboard: data.dashboard,
-                  loc: data.loc,
-                  location: data.location,
-                  apac: data.apac,
-                  claims: data.claims,
-                  uploads: data.uploads || [],
-                  datasets: data.datasets || {},
-                },
-              ]);
+              stateToSave.years = Array.from(
+                (stateToSave.years as Map<number, YearData>).entries()
+              ).map(([yr, data]) => [yr, { ...data }]);
             } else {
               // partialize stripped years out — just skip it
               delete stateToSave.years;

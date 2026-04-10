@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Download, DollarSign, Beaker, AlertCircle, Activity, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Download, DollarSign, Beaker, AlertCircle, Activity, TrendingUp, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import {
   AreaChart,
   Area,
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -121,6 +123,153 @@ function SingleRowTable({ label, values, isCurrency = false }: { label: string; 
   );
 }
 
+// ── Dynamic Column Analyzer ──
+// Detects all columns in rawColumns, groups by category, lets user pick any column to chart
+function ColumnAnalyzer({ rawColumns }: { rawColumns: Record<string, number[]> }) {
+  const [selectedCol, setSelectedCol] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Group columns by category (prefix before '-')
+  const groups = useMemo(() => {
+    const g: Record<string, string[]> = {};
+    for (const col of Object.keys(rawColumns)) {
+      const dashIdx = col.indexOf('-');
+      const category = dashIdx > 0 ? col.substring(0, dashIdx).trim() : 'Other';
+      if (!g[category]) g[category] = [];
+      g[category].push(col);
+    }
+    return g;
+  }, [rawColumns]);
+
+  const allColumns = useMemo(() => Object.keys(rawColumns), [rawColumns]);
+
+  // Filter columns by search
+  const filteredColumns = useMemo(() => {
+    if (!searchTerm) return allColumns;
+    const term = searchTerm.toLowerCase();
+    return allColumns.filter(c => c.toLowerCase().includes(term));
+  }, [allColumns, searchTerm]);
+
+  // Get chart data for the selected column
+  const chartData = useMemo(() => {
+    if (!selectedCol || !rawColumns[selectedCol]) return [];
+    return MONTHS.map((month, idx) => ({
+      month: month.substring(0, 3),
+      value: rawColumns[selectedCol][idx] || 0,
+    }));
+  }, [selectedCol, rawColumns]);
+
+  // Auto-detect if this looks like a currency, percentage, or count field
+  const isCurrency = selectedCol.toLowerCase().includes('revenue') ||
+    selectedCol.toLowerCase().includes('cost') ||
+    selectedCol.toLowerCase().includes('cos ') ||
+    selectedCol.toLowerCase().includes('value') ||
+    selectedCol.toLowerCase().includes('amount') ||
+    selectedCol.toLowerCase().includes('paid');
+  const isPercentage = selectedCol.toLowerCase().includes('percentage') ||
+    selectedCol.toLowerCase().includes('gp ') ||
+    selectedCol.toLowerCase().includes('occupancy');
+
+  if (allColumns.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="border-b border-gray-200 px-5 py-3">
+        <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <Search className="h-4 w-4" />
+          Dynamic Column Analyzer
+          <span className="text-xs font-normal text-gray-400">({allColumns.length} columns available)</span>
+        </h2>
+      </div>
+      <div className="p-5">
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          {/* Search / filter */}
+          <div className="relative flex-1">
+            <input
+              type="text"
+              placeholder="Search columns..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none"
+            />
+          </div>
+
+          {/* Column dropdown */}
+          <select
+            value={selectedCol}
+            onChange={(e) => setSelectedCol(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none min-w-[300px]"
+          >
+            <option value="">Select a column to analyze...</option>
+            {searchTerm ? (
+              // Flat filtered list
+              filteredColumns.map(col => (
+                <option key={col} value={col}>{col}</option>
+              ))
+            ) : (
+              // Grouped by category
+              Object.entries(groups).map(([category, cols]) => (
+                <optgroup key={category} label={`${category} (${cols.length})`}>
+                  {cols.map(col => {
+                    const label = col.includes('-') ? col.split('-').slice(1).join('-') : col;
+                    return <option key={col} value={col}>{label}</option>;
+                  })}
+                </optgroup>
+              ))
+            )}
+          </select>
+        </div>
+
+        {/* Chart for the selected column */}
+        {selectedCol && chartData.length > 0 && (
+          <div>
+            <p className="text-xs text-gray-500 mb-2">
+              Showing: <span className="font-semibold text-gray-700">{selectedCol}</span>
+              {' '} — Total: <span className="font-semibold">
+                {isCurrency
+                  ? formatCurrency(chartData.reduce((s, d) => s + d.value, 0))
+                  : isPercentage
+                    ? `${(chartData.filter(d => d.value > 0).reduce((s, d) => s + d.value, 0) / Math.max(chartData.filter(d => d.value > 0).length, 1)).toFixed(1)}% avg`
+                    : formatNumber(chartData.reduce((s, d) => s + d.value, 0))
+                }
+              </span>
+            </p>
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={chartData}>
+                <CartesianGrid stroke="#f1f5f9" strokeDasharray="3 3" />
+                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  formatter={(value) => {
+                    const v = Number(value ?? 0);
+                    return isCurrency ? formatCurrency(v) :
+                      isPercentage ? `${v.toFixed(1)}%` :
+                      formatNumber(v);
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#0d9488"
+                  strokeWidth={2}
+                  dot={{ fill: '#0d9488', r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {!selectedCol && (
+          <p className="text-sm text-gray-400 text-center py-8">
+            Select any column from the dropdown above to instantly visualize its monthly trend
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const dashData = useDashboard();
 
@@ -224,6 +373,9 @@ export default function DashboardPage() {
         <StatCard title="Prescriptions" value={formatNumber(totalPrescriptions)} trend="neutral" icon={TrendingUp} color="rose" />
         <StatCard title="Total Payments" value={formatCurrency(totalPayments)} trend="neutral" color="teal" />
       </div>
+
+      {/* ── Dynamic Column Analyzer ── */}
+      <ColumnAnalyzer rawColumns={dashData.rawColumns || {}} />
 
       {/* Charts Row */}
       <div className="grid gap-4 lg:grid-cols-2">

@@ -484,6 +484,7 @@ export interface StoreState {
   setYear: (year: number) => void;
   setMonth: (month: number) => void;
   addYearData: (year: number, data: YearData) => void;
+  appendDailyData: (year: number, monthIndex: number, patch: DailyDataPatch) => void;
   removeYear: (year: number) => void;
   removeUpload: (year: number, uploadId: string) => void;
   addDataset: (year: number, dataset: GenericDataset) => void;
@@ -494,4 +495,31 @@ export interface StoreState {
   toggleSidebar: () => void;
   setFilters: (filters: FilterState) => void;
   reset: () => void;
+}
+
+/**
+ * A lightweight partial update for a single day's data.
+ * Used by the file watcher for incremental daily ingests.
+ * All fields are optional — only the provided fields get merged.
+ */
+export interface DailyDataPatch {
+  // Dashboard increments (single-month values to ADD to the monthly slot)
+  admissions?: { casualty?: number; day?: number; inpatient?: number; lab?: number };
+  discharges?: Record<string, number>;
+  revenue?: number;
+  theatreCases?: number;
+  theatreMinutes?: number;
+  pharmacyRx?: number;
+  pharmacyRev?: number;
+  epsFinalised?: number;
+  payments?: { deposits?: number; individual?: number; medAid?: number; batched?: number };
+  wardAdmissions?: Record<string, number>;
+  // Location increments
+  newEpisodes?: number;
+  newLocationRevenue?: number;
+  newIcdCodes?: Record<string, { count: number; desc: string }>;
+  newCptCodes?: Record<string, { count: number; desc: string }>;
+  // Claims increments
+  newClaims?: { total?: number; approved?: number; rejected?: number; pending?: number; amount?: number };
+  newClaimsByScheme?: Record<string, { claimed: number; approved: number; rejected: number }>;
 }
