@@ -400,6 +400,19 @@ export const useStore = create<StoreState>()(
     {
       name: 'avenues-clinic-store',
       version: 3,
+      // Custom merge: default shallow merge uses object spread which destroys Maps
+      // ({ ...currentState, ...persistedState }) turns Map into {} because Maps don't spread.
+      // We must explicitly preserve the years Map during hydration.
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<StoreState> | undefined;
+        return {
+          ...currentState,
+          ...persisted,
+          years: persisted?.years instanceof Map && persisted.years.size > 0
+            ? persisted.years
+            : (currentState as StoreState).years,
+        } as StoreState;
+      },
       migrate: (persistedState, version) => {
         if (!persistedState || version < 3) {
           return {
