@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, X, CheckCircle, AlertCircle, File, Zap, RefreshCw, Trash2, Clock, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAddYearData, useUploads, useRemoveUpload, useCurrentYear, useDatasetList, useAddDataset, useRemoveDataset } from '@/store';
+import { useAddYearData, useUploads, useRemoveUpload, useCurrentYear, useDatasetList, useAddDataset, useRemoveDataset, useIsFileProcessed, useMarkFileProcessed } from '@/store';
 import { YearData, UploadRecord, UploadCategory, GenericDataset } from '@/types';
 import { parseDashboardCSV, parseLocationCSV, parseClaimsCSV, detectYear, detectFacilityName } from '@/lib/parsers';
 import { parseGenericCSV } from '@/lib/generic-parser';
@@ -23,6 +23,17 @@ interface FileUpload {
   parsedData?: YearData;
   genericData?: GenericDataset;  // for generic/unrecognised CSVs
   debugInfo?: string;
+  fileHash?: string;             // SHA-256 hash for duplicate prevention
+  isDuplicate?: boolean;         // true if this file was already processed
+}
+
+/** Compute SHA-256 hex digest of a string using Web Crypto API */
+async function hashString(text: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -273,6 +284,8 @@ export default function UploadPage() {
   const addDataset = useAddDataset();
   const removeDataset = useRemoveDataset();
   const currentYear = useCurrentYear();
+  const isFileProcessed = useIsFileProcessed();
+  const markFileProcessed = useMarkFileProcessed();
   const router = useRouter();
 
   const handleDrag = (e: React.DragEvent) => {
@@ -325,14 +338,21 @@ export default function UploadPage() {
       setUploads(prev => [...prev, newUpload]);
 
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const csvText = e.target?.result as string;
           if (!csvText || csvText.trim().length === 0) {
             throw new Error('File is empty');
           }
 
-          console.log(`[Upload] Parsing file: ${file.name} (${csvText.length} chars)`);
+          // Compute SHA-256 hash for duplicate detection
+          const fileHash = await hashString(csvText);
+          const duplicate = isFileProcessed(fileHash);
+          if (duplicate) {
+            console.warn(`[Upload] Duplicate file detected: ${file.name} (hash: ${fileHash.substring(0, 12)}...)`);
+          }
+
+          console.log(`[Upload] Parsing file: ${file.name} (${csvText.length} chars, hash: ${fileHash.substring(0, 12)}...)`);
           const result = detectAndParse(csvText, manualYear);
 
           // For generic datasets, set the proper filename
@@ -357,6 +377,8 @@ export default function UploadPage() {
                     parsedData: result.parsedData,
                     genericData: result.genericData,
                     debugInfo: result.debugInfo,
+                    fileHash,
+                    isDuplicate: duplicate,
                   }
                 : u
             )
@@ -413,10 +435,17 @@ export default function UploadPage() {
       });
 
       sorted.forEach(upload => {
+        // Skip duplicates that the user hasn't explicitly re-confirmed
+        if (upload.isDuplicate) {
+          console.log(`[Upload] Skipping duplicate file: ${upload.file.name}`);
+          return;
+        }
+
         // Handle Generic datasets separately
         if (upload.type === 'Generic' && upload.genericData) {
           console.log(`[Upload] Adding generic dataset "${upload.genericData.name}" for year ${upload.year}`);
           addDataset(upload.year, upload.genericData);
+          if (upload.fileHash) markFileProcessed(upload.fileHash);
           return;
         }
 
@@ -459,6 +488,16 @@ export default function UploadPage() {
           if (dataToStore.loc) {
             dataToStore.loc = dataToStore.location;
           }
+          // Cap claims rawRows to avoid localStorage bloat (keep for dedup)
+          if (dataToStore.claims && dataToStore.claims.rawRows) {
+            dataToStore.claims = {
+              ...dataToStore.claims,
+              rawRows: dataToStore.claims.rawRows.length > 2000 ? undefined : dataToStore.claims.rawRows,
+            };
+          }
+          if (dataToStore.apac) {
+            dataToStore.apac = dataToStore.claims;
+          }
 
           console.log(`[Upload] ${action.toUpperCase()} ${upload.type} data for year ${upload.year}:`, {
             uploadId,
@@ -471,6 +510,11 @@ export default function UploadPage() {
             doctors: dataToStore.location?.doctors?.length,
           });
           addYearData(upload.year, dataToStore);
+
+          // Mark file as processed to prevent future duplicates
+          if (upload.fileHash) {
+            markFileProcessed(upload.fileHash);
+          }
         }
       });
 
@@ -658,6 +702,17 @@ export default function UploadPage() {
                           <div>Categorical: {upload.genericData.columnProfiles.filter(c => c.type === 'categorical').length}</div>
                         </div>
                         <p className="mt-1 text-[10px] text-violet-600">Cols: {upload.genericData.schema.columnNames.slice(0, 8).join(', ')}{upload.genericData.schema.columnNames.length > 8 ? '...' : ''}</p>
+                      </div>
+                    )}
+
+                    {/* Duplicate file warning */}
+                    {upload.isDuplicate && upload.status === 'complete' && (
+                      <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold">Duplicate file detected</p>
+                          <p className="mt-0.5">This file has already been processed. It will be <strong>skipped</strong> to prevent double-counting. Remove it from the queue or upload a different file.</p>
+                        </div>
                       </div>
                     )}
 

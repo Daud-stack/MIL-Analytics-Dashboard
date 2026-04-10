@@ -17,6 +17,11 @@ services:
       - /app/node_modules
       - /app/.next
       - sqlite-data:/app/prisma/data
+      # File watcher paths — ensure these host dirs exist for chokidar ingestion
+      # On Windows: create C:\Users\<you>\uploads and map it here
+      # - C:/Users/daud/OneDrive - Avenues Clinic/Desktop/uploads:/app/uploads
+      # - ./archived:/app/archived
+      # - ./data:/app/data
     env_file:
       - .env
     environment:
