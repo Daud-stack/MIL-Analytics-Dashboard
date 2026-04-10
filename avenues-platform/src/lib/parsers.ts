@@ -127,6 +127,47 @@ function getMonthIndex(monthName: string): number {
 }
 
 /**
+ * Extract 0-based month index from a date string.
+ * Handles: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, YYYY/MM/DD.
+ * Returns -1 if unparseable.
+ */
+function parseDateMonth(dateStr: string): number {
+  if (!dateStr) return -1;
+
+  // Try YYYY-MM-DD or YYYY/MM/DD first (unambiguous — group 2 is always month)
+  const isoMatch = dateStr.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (isoMatch) {
+    const m = parseInt(isoMatch[2], 10) - 1;
+    return (m >= 0 && m < 12) ? m : -1;
+  }
+
+  // Try DD/MM/YYYY or DD-MM-YYYY (Zimbabwe standard)
+  // Disambiguate: if group 1 > 12, it must be a day → group 2 is the month
+  // If group 2 > 12, it must be a day → group 1 is the month (US format)
+  // If both <= 12, assume DD/MM/YYYY (locale default)
+  const dmyMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const g1 = parseInt(dmyMatch[1], 10);
+    const g2 = parseInt(dmyMatch[2], 10);
+
+    let month: number;
+    if (g1 > 12) {
+      // g1 is definitely a day → g2 is month (DD/MM/YYYY)
+      month = g2 - 1;
+    } else if (g2 > 12) {
+      // g2 is definitely a day → g1 is month (MM/DD/YYYY)
+      month = g1 - 1;
+    } else {
+      // Ambiguous — assume DD/MM/YYYY (Zimbabwe locale)
+      month = g2 - 1;
+    }
+    return (month >= 0 && month < 12) ? month : -1;
+  }
+
+  return -1;
+}
+
+/**
  * Safe parse number, handling decimals, comma-formatted numbers, and quoted values
  */
 function parseNumber(value: unknown): number {
@@ -596,15 +637,7 @@ export function parseLocationCSV(csvText: string): YearData {
 
     // Parse admission date for monthly aggregation
     const admDateStr = colAdmDate ? (row[colAdmDate] || '').trim() : '';
-    let admMonth = -1;
-    if (admDateStr) {
-      // Try various date formats: DD/MM/YYYY, YYYY-MM-DD, MM/DD/YYYY
-      const dmyMatch = admDateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-      if (dmyMatch) {
-        const month = parseInt(dmyMatch[2], 10) - 1;
-        if (month >= 0 && month < 12) admMonth = month;
-      }
-    }
+    const admMonth = parseDateMonth(admDateStr);
 
     // Revenue
     const revenue = colTotal ? parseNumber(row[colTotal]) : 0;
@@ -827,19 +860,14 @@ export function parseClaimsCSV(csvText: string): YearData {
 
     // Monthly aggregation
     const dateStr = colDate ? (row[colDate] || '').trim() : '';
-    if (dateStr) {
-      const dateMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-      if (dateMatch) {
-        const month = parseInt(dateMatch[2], 10) - 1;
-        if (month >= 0 && month < 12) {
-          metrics.totalClaims_monthly[month]++;
-          metrics.claimAmounts_monthly[month] += claimValue;
-          if (status.includes('approved') || status.includes('accepted') || status.includes('paid') || s === 'A') metrics.approvedClaims_monthly[month]++;
-          if (status.includes('rejected') || status.includes('declined') || s === 'X' || s === 'D') metrics.rejectedClaims_monthly[month]++;
-          if (status.includes('pending') || status.includes('processing') || s === 'P') metrics.pendingClaims_monthly[month]++;
-          metrics.byMonth[month] = (metrics.byMonth[month] || 0) + 1;
-        }
-      }
+    const claimMonth = parseDateMonth(dateStr);
+    if (claimMonth >= 0) {
+      metrics.totalClaims_monthly[claimMonth]++;
+      metrics.claimAmounts_monthly[claimMonth] += claimValue;
+      if (status.includes('approved') || status.includes('accepted') || status.includes('paid') || s === 'A') metrics.approvedClaims_monthly[claimMonth]++;
+      if (status.includes('rejected') || status.includes('declined') || s === 'X' || s === 'D') metrics.rejectedClaims_monthly[claimMonth]++;
+      if (status.includes('pending') || status.includes('processing') || s === 'P') metrics.pendingClaims_monthly[claimMonth]++;
+      metrics.byMonth[claimMonth] = (metrics.byMonth[claimMonth] || 0) + 1;
     }
 
     // By scheme
@@ -867,6 +895,10 @@ export function parseClaimsCSV(csvText: string): YearData {
   }
 
   console.log('[Claims Parser] Total claims:', metrics.totalClaims, 'Total claimed:', metrics.totalClaimed);
+
+  // Store raw rows for row-level dedup on near-duplicate uploads
+  // Cap at 2000 rows to avoid localStorage bloat
+  metrics.rawRows = data.length <= 2000 ? data : undefined;
 
   return {
     year,

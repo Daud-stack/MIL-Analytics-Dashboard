@@ -154,6 +154,7 @@ export interface ClaimsMetrics {
   pendingClaims_monthly: number[];
   claimAmounts_monthly: number[];
   rejectionReasons: Record<string, number>;
+  rawRows?: Record<string, string>[];  // raw claim rows for dedup on near-duplicate uploads
 }
 
 export interface ClaimSchemeData {
@@ -473,6 +474,8 @@ export interface StoreState {
   currentYear: number;
   currentMonth: number;
   compareYears: number[];
+  /** SHA-256 hashes of files already processed — prevents double-counting on re-upload */
+  processedFileHashes: string[];
 
   // UI State
   activePage: string;
@@ -485,6 +488,8 @@ export interface StoreState {
   setMonth: (month: number) => void;
   addYearData: (year: number, data: YearData) => void;
   appendDailyData: (year: number, monthIndex: number, patch: DailyDataPatch) => void;
+  isFileProcessed: (hash: string) => boolean;
+  markFileProcessed: (hash: string) => void;
   removeYear: (year: number) => void;
   removeUpload: (year: number, uploadId: string) => void;
   addDataset: (year: number, dataset: GenericDataset) => void;

@@ -11,7 +11,8 @@ const initialState = {
   years: new Map<number, YearData>(),
   currentYear,
   currentMonth: 0,
-  compareYears: [],
+  compareYears: [] as number[],
+  processedFileHashes: [] as string[],
   activePage: 'dashboard',
   theme: 'light' as Theme,
   sidebarOpen: true,
@@ -23,7 +24,7 @@ const initialState = {
 
 type PersistedStoreState = Pick<
   StoreState,
-  'years' | 'currentYear' | 'currentMonth' | 'compareYears' | 'activePage' | 'theme' | 'sidebarOpen' | 'filters'
+  'years' | 'currentYear' | 'currentMonth' | 'compareYears' | 'processedFileHashes' | 'activePage' | 'theme' | 'sidebarOpen' | 'filters'
 >;
 
 const MONTH_COUNT = 12;
@@ -308,8 +309,9 @@ export const useStore = create<StoreState>()(
           }
 
           // ──────────────────────────────────────────────────────
-          // 2. LOCATION: Append — increment ICD/CPT counts,
-          //    add episodes/revenue, merge doctors
+          // 2. LOCATION: Append with row-level deduplication
+          //    If a user uploads an "updated" LOC file (same rows + new rows),
+          //    only the truly new rows contribute to aggregates.
           // ──────────────────────────────────────────────────────
           let mergedLocation: LocationData | null = existing.location;
 
@@ -317,48 +319,97 @@ export const useStore = create<StoreState>()(
             const a = existing.location;
             const b = normalizedData.location;
 
-            // Merge doctors by name: additive (sum episodes, revenue, patients)
+            // Build set of existing Episode IDs for dedup
+            const existingEpisodeIds = new Set<string>();
+            for (const row of (a.rawRows || [])) {
+              // Try Episode column (most common key)
+              const epId = String(row['Episode'] || row['episode'] || '').trim();
+              if (epId) existingEpisodeIds.add(epId);
+            }
+
+            // Filter incoming rawRows to only truly NEW rows
+            const incomingRows = b.rawRows || [];
+            let newRows: Record<string, unknown>[];
+            if (existingEpisodeIds.size > 0 && incomingRows.length > 0) {
+              newRows = incomingRows.filter(row => {
+                const epId = String(row['Episode'] || row['episode'] || '').trim();
+                return !epId || !existingEpisodeIds.has(epId);
+              });
+              console.log(`[Store] Location dedup: ${incomingRows.length} incoming, ${newRows.length} new (${incomingRows.length - newRows.length} duplicates skipped)`);
+            } else {
+              newRows = incomingRows;
+            }
+
+            // Compute the fraction of new rows vs total incoming
+            // Use this to scale aggregates proportionally
+            const totalIncoming = incomingRows.length || 1;
+            const newFraction = newRows.length / totalIncoming;
+
+            // Scale the incoming aggregates by the fraction of new rows
+            const scaleArray = (arr: number[]): number[] =>
+              arr.map(v => Math.round(v * newFraction));
+            const scaleCountMap = (m: Record<string, number>): Record<string, number> => {
+              const result: Record<string, number> = {};
+              for (const [k, v] of Object.entries(m)) {
+                result[k] = Math.round(v * newFraction);
+              }
+              return result;
+            };
+            const scaleCodeMap = (m: Record<string, { count: number; desc: string }>): Record<string, { count: number; desc: string }> => {
+              const result: Record<string, { count: number; desc: string }> = {};
+              for (const [k, v] of Object.entries(m)) {
+                result[k] = { count: Math.round(v.count * newFraction), desc: v.desc };
+              }
+              return result;
+            };
+
+            // Merge doctors by name: scale incoming by new fraction
             const docMap = new Map<string, typeof a.doctors[0]>();
             for (const d of a.doctors) docMap.set(d.name, { ...d });
             for (const d of b.doctors) {
+              const scaledEps = Math.round(d.episodes * newFraction);
+              const scaledRev = d.revenue * newFraction;
+              const scaledPat = Math.round(d.patients * newFraction);
+              if (scaledEps === 0 && scaledRev === 0) continue; // nothing new for this doctor
               const ex = docMap.get(d.name);
               if (ex) {
                 docMap.set(d.name, {
                   ...d,
-                  episodes: ex.episodes + d.episodes,
-                  revenue: ex.revenue + d.revenue,
+                  episodes: ex.episodes + scaledEps,
+                  revenue: ex.revenue + scaledRev,
                   avgLOS: (ex.avgLOS + d.avgLOS) / 2,
-                  patients: ex.patients + d.patients,
+                  patients: ex.patients + scaledPat,
                 });
               } else {
-                docMap.set(d.name, { ...d });
+                docMap.set(d.name, { ...d, episodes: scaledEps, revenue: scaledRev, patients: scaledPat });
               }
             }
 
             mergedLocation = {
               ...b,
               year,
-              episodes: a.episodes + b.episodes,
-              totalRevenue: a.totalRevenue + b.totalRevenue,
-              monthEpisodes: addArrays(a.monthEpisodes, b.monthEpisodes),
-              monthRevenue: addArrays(a.monthRevenue, b.monthRevenue),
+              episodes: a.episodes + newRows.length,
+              totalRevenue: a.totalRevenue + (b.totalRevenue * newFraction),
+              monthEpisodes: addArrays(a.monthEpisodes, scaleArray(b.monthEpisodes)),
+              monthRevenue: addArrays(a.monthRevenue, b.monthRevenue.map(v => v * newFraction)),
               doctors: Array.from(docMap.values()).sort((x, y) => y.revenue - x.revenue),
-              icdCodes: incrementCodeMap(a.icdCodes, b.icdCodes),
-              cptCodes: incrementCodeMap(a.cptCodes, b.cptCodes),
-              specialties: incrementCountMap(a.specialties, b.specialties),
-              medAids: incrementCountMap(a.medAids, b.medAids),
-              ageGroups: incrementCountMap(a.ageGroups, b.ageGroups),
-              genders: incrementCountMap(a.genders, b.genders),
-              los: incrementCountMap(a.los, b.los),
-              rawRows: [...(a.rawRows || []), ...(b.rawRows || [])],
+              icdCodes: incrementCodeMap(a.icdCodes, scaleCodeMap(b.icdCodes)),
+              cptCodes: incrementCodeMap(a.cptCodes, scaleCodeMap(b.cptCodes)),
+              specialties: incrementCountMap(a.specialties, scaleCountMap(b.specialties)),
+              medAids: incrementCountMap(a.medAids, scaleCountMap(b.medAids)),
+              ageGroups: incrementCountMap(a.ageGroups, scaleCountMap(b.ageGroups)),
+              genders: incrementCountMap(a.genders, scaleCountMap(b.genders)),
+              los: incrementCountMap(a.los, scaleCountMap(b.los)),
+              rawRows: [...(a.rawRows || []), ...newRows],
             };
           } else if (normalizedData.location) {
             mergedLocation = normalizedData.location;
           }
 
           // ──────────────────────────────────────────────────────
-          // 3. CLAIMS: Append — sum totals, increment scheme/doctor
-          //    counts, merge monthly arrays, merge rejection reasons
+          // 3. CLAIMS: Append with row-level deduplication
+          //    Uses Episode + ClaimDate composite key to detect
+          //    overlapping rows in near-duplicate uploads
           // ──────────────────────────────────────────────────────
           let mergedClaims: ClaimsMetrics | null = existing.claims;
 
@@ -366,62 +417,113 @@ export const useStore = create<StoreState>()(
             const a = existing.claims;
             const b = normalizedData.claims;
 
-            // Merge byScheme: increment each scheme's sub-totals
+            // Row-level dedup using composite key from rawRows
+            let newFraction = 1;
+            let mergedClaimRawRows: Record<string, string>[] | undefined = undefined;
+
+            if (a.rawRows && a.rawRows.length > 0 && b.rawRows && b.rawRows.length > 0) {
+              // Build set of existing composite keys: Episode|Date|Amount
+              const existingKeys = new Set<string>();
+              for (const row of a.rawRows) {
+                const ep = (row['Episode'] || row['episode'] || '').trim();
+                const dt = (row['Claim Date'] || row['claim date'] || row['Date'] || row['date'] || '').trim();
+                const amt = (row['Claim Value'] || row['claim value'] || row['Amount'] || row['amount'] || '').trim();
+                existingKeys.add(`${ep}|${dt}|${amt}`);
+              }
+
+              const incomingRows = b.rawRows;
+              const newRows = incomingRows.filter(row => {
+                const ep = (row['Episode'] || row['episode'] || '').trim();
+                const dt = (row['Claim Date'] || row['claim date'] || row['Date'] || row['date'] || '').trim();
+                const amt = (row['Claim Value'] || row['claim value'] || row['Amount'] || row['amount'] || '').trim();
+                return !existingKeys.has(`${ep}|${dt}|${amt}`);
+              });
+
+              newFraction = incomingRows.length > 0 ? newRows.length / incomingRows.length : 0;
+              mergedClaimRawRows = [...a.rawRows, ...newRows];
+              console.log(`[Store] Claims dedup: ${incomingRows.length} incoming, ${newRows.length} new (${incomingRows.length - newRows.length} duplicates skipped)`);
+            } else {
+              // No rawRows for dedup — fall back to full additive merge
+              mergedClaimRawRows = b.rawRows ? [...(a.rawRows || []), ...b.rawRows] : a.rawRows;
+            }
+
+            // Scale incoming aggregates by fraction of truly new rows
+            const scaleScheme = (s: ClaimSchemeData): ClaimSchemeData => ({
+              totalClaimed: s.totalClaimed * newFraction,
+              submitted: Math.round(s.submitted * newFraction),
+              received: Math.round(s.received * newFraction),
+              rejected: Math.round(s.rejected * newFraction),
+              approved: Math.round(s.approved * newFraction),
+              pending: Math.round(s.pending * newFraction),
+            });
+
+            // Merge byScheme: scale then increment
             const mergedByScheme: Record<string, ClaimSchemeData> = { ...a.byScheme };
             for (const [scheme, bData] of Object.entries(b.byScheme)) {
+              const scaled = scaleScheme(bData);
               const ex = mergedByScheme[scheme];
               if (ex) {
                 mergedByScheme[scheme] = {
-                  totalClaimed: ex.totalClaimed + bData.totalClaimed,
-                  submitted: ex.submitted + bData.submitted,
-                  received: ex.received + bData.received,
-                  rejected: ex.rejected + bData.rejected,
-                  approved: ex.approved + bData.approved,
-                  pending: ex.pending + bData.pending,
+                  totalClaimed: ex.totalClaimed + scaled.totalClaimed,
+                  submitted: ex.submitted + scaled.submitted,
+                  received: ex.received + scaled.received,
+                  rejected: ex.rejected + scaled.rejected,
+                  approved: ex.approved + scaled.approved,
+                  pending: ex.pending + scaled.pending,
                 };
               } else {
-                mergedByScheme[scheme] = { ...bData };
+                mergedByScheme[scheme] = scaled;
               }
             }
 
-            // Merge byDoctor: increment claims/approved/amount per doctor
+            // Merge byDoctor: scale then increment
             const mergedByDoctor: Record<string, { claims: number; approved: number; amount: number }> = { ...a.byDoctor };
             for (const [doc, bData] of Object.entries(b.byDoctor)) {
+              const scaledClaims = Math.round(bData.claims * newFraction);
+              const scaledApproved = Math.round(bData.approved * newFraction);
+              const scaledAmount = bData.amount * newFraction;
               const ex = mergedByDoctor[doc];
               if (ex) {
                 mergedByDoctor[doc] = {
-                  claims: ex.claims + bData.claims,
-                  approved: ex.approved + bData.approved,
-                  amount: ex.amount + bData.amount,
+                  claims: ex.claims + scaledClaims,
+                  approved: ex.approved + scaledApproved,
+                  amount: ex.amount + scaledAmount,
                 };
               } else {
-                mergedByDoctor[doc] = { ...bData };
+                mergedByDoctor[doc] = { claims: scaledClaims, approved: scaledApproved, amount: scaledAmount };
               }
             }
+
+            const scaleCountMapFn = (m: Record<string, number>): Record<string, number> => {
+              const result: Record<string, number> = {};
+              for (const [k, v] of Object.entries(m)) result[k] = Math.round(v * newFraction);
+              return result;
+            };
 
             mergedClaims = {
               ...b,
               year,
-              totalClaims: a.totalClaims + b.totalClaims,
-              totalClaimed: a.totalClaimed + b.totalClaimed,
-              submitted: a.submitted + b.submitted,
-              received: a.received + b.received,
-              rejected: a.rejected + b.rejected,
-              approved: a.approved + b.approved,
-              pending: a.pending + b.pending,
+              totalClaims: a.totalClaims + Math.round(b.totalClaims * newFraction),
+              totalClaimed: a.totalClaimed + (b.totalClaimed * newFraction),
+              submitted: a.submitted + Math.round(b.submitted * newFraction),
+              received: a.received + Math.round(b.received * newFraction),
+              rejected: a.rejected + Math.round(b.rejected * newFraction),
+              approved: a.approved + Math.round(b.approved * newFraction),
+              pending: a.pending + Math.round(b.pending * newFraction),
               byScheme: mergedByScheme,
-              byStatus: incrementCountMap(a.byStatus, b.byStatus),
+              byStatus: incrementCountMap(a.byStatus, scaleCountMapFn(b.byStatus)),
               byMonth: incrementCountMap(
                 a.byMonth as unknown as Record<string, number>,
-                b.byMonth as unknown as Record<string, number>
+                scaleCountMapFn(b.byMonth as unknown as Record<string, number>)
               ) as unknown as Record<number, number>,
               byDoctor: mergedByDoctor,
-              totalClaims_monthly: addArrays(a.totalClaims_monthly, b.totalClaims_monthly),
-              approvedClaims_monthly: addArrays(a.approvedClaims_monthly, b.approvedClaims_monthly),
-              rejectedClaims_monthly: addArrays(a.rejectedClaims_monthly, b.rejectedClaims_monthly),
-              pendingClaims_monthly: addArrays(a.pendingClaims_monthly, b.pendingClaims_monthly),
-              claimAmounts_monthly: addArrays(a.claimAmounts_monthly, b.claimAmounts_monthly),
-              rejectionReasons: incrementCountMap(a.rejectionReasons, b.rejectionReasons),
+              totalClaims_monthly: addArrays(a.totalClaims_monthly, b.totalClaims_monthly.map(v => Math.round(v * newFraction))),
+              approvedClaims_monthly: addArrays(a.approvedClaims_monthly, b.approvedClaims_monthly.map(v => Math.round(v * newFraction))),
+              rejectedClaims_monthly: addArrays(a.rejectedClaims_monthly, b.rejectedClaims_monthly.map(v => Math.round(v * newFraction))),
+              pendingClaims_monthly: addArrays(a.pendingClaims_monthly, b.pendingClaims_monthly.map(v => Math.round(v * newFraction))),
+              claimAmounts_monthly: addArrays(a.claimAmounts_monthly, b.claimAmounts_monthly.map(v => v * newFraction)),
+              rejectionReasons: incrementCountMap(a.rejectionReasons, scaleCountMapFn(b.rejectionReasons)),
+              rawRows: mergedClaimRawRows,
             };
           } else if (normalizedData.claims) {
             mergedClaims = normalizedData.claims;
@@ -615,6 +717,22 @@ export const useStore = create<StoreState>()(
 
           newYears.set(year, updated);
           return { years: newYears };
+        });
+      },
+
+      // ════════════════════════════════════════════════════════════
+      // Duplicate prevention — client-side file hash tracking
+      // ════════════════════════════════════════════════════════════
+      isFileProcessed: (hash: string) => {
+        return get().processedFileHashes.includes(hash);
+      },
+
+      markFileProcessed: (hash: string) => {
+        set((state) => {
+          if (state.processedFileHashes.includes(hash)) return state;
+          return {
+            processedFileHashes: [...state.processedFileHashes, hash],
+          };
         });
       },
 
@@ -833,6 +951,7 @@ export const useStore = create<StoreState>()(
         currentYear: state.currentYear,
         currentMonth: state.currentMonth,
         compareYears: state.compareYears,
+        processedFileHashes: state.processedFileHashes,
         activePage: state.activePage,
         theme: state.theme,
         sidebarOpen: state.sidebarOpen,
@@ -852,6 +971,8 @@ export const useActivePage = () => useStore((state) => state.activePage);
 export const useTheme = () => useStore((state) => state.theme);
 export const useSidebarOpen = () => useStore((state) => state.sidebarOpen);
 export const useFilters = () => useStore((state) => state.filters);
+export const useIsFileProcessed = () => useStore((state) => state.isFileProcessed);
+export const useMarkFileProcessed = () => useStore((state) => state.markFileProcessed);
 
 // ===== HELPER SELECTORS =====
 
