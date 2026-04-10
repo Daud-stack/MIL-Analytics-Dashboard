@@ -2,10 +2,10 @@
 
 import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, X, CheckCircle, AlertCircle, File, Zap, RefreshCw } from 'lucide-react';
+import { Upload, X, CheckCircle, AlertCircle, File, Zap, RefreshCw, Trash2, Clock, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAddYearData } from '@/store';
-import { YearData } from '@/types';
+import { useAddYearData, useUploads, useRemoveUpload, useCurrentYear } from '@/store';
+import { YearData, UploadRecord, UploadCategory } from '@/types';
 import { parseDashboardCSV, parseLocationCSV, parseClaimsCSV, detectYear, detectFacilityName } from '@/lib/parsers';
 
 interface FileUpload {
@@ -230,6 +230,9 @@ export default function UploadPage() {
   const [processing, setProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addYearData = useAddYearData();
+  const existingUploads = useUploads();
+  const removeUpload = useRemoveUpload();
+  const currentYear = useCurrentYear();
   const router = useRouter();
 
   const handleDrag = (e: React.DragEvent) => {
@@ -351,7 +354,8 @@ export default function UploadPage() {
     if (completed.length === 0) return;
 
     setProcessing(true);
-    console.log(`[Upload] Committing ${completed.length} files to store`);
+    const now = new Date().toISOString();
+    console.log(`[Upload] Committing ${completed.length} files to store at ${now}`);
 
     try {
       // Sort: Dashboard files first, then Location, then Claims
@@ -363,15 +367,48 @@ export default function UploadPage() {
 
       sorted.forEach(upload => {
         if (upload.parsedData) {
+          const uploadId = typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : Date.now().toString(36) + Math.random().toString(36).substring(7);
+
+          // Determine category for UploadRecord
+          const category: UploadCategory =
+            upload.type === 'Dashboard' ? 'Dashboard' :
+            upload.type === 'Location' ? 'Location' :
+            upload.type === 'Claims' ? 'Claims' : 'Dashboard';
+
+          // Determine action: Dashboard always replaces, LOC/Claims append
+          const action: 'replace' | 'append' = category === 'Dashboard' ? 'replace' : 'append';
+
+          // Create upload tracking record
+          const uploadRecord: UploadRecord = {
+            id: uploadId,
+            category,
+            fileName: upload.file.name,
+            uploadedAt: now,
+            rowCount: upload.rowCount,
+            action,
+          };
+
           // Strip rawRows before committing to store to avoid memory/localStorage issues
-          const dataToStore = { ...upload.parsedData };
+          // But first, stamp each LOC row with Date_Uploaded for traceability
+          const dataToStore: YearData = { ...upload.parsedData, uploads: [uploadRecord] };
           if (dataToStore.location) {
-            dataToStore.location = { ...dataToStore.location, rawRows: [] };
+            const stamped = (dataToStore.location.rawRows || []).map(row => ({
+              ...row,
+              _uploadedAt: now,
+              _uploadId: uploadId,
+              _fileName: upload.file.name,
+            }));
+            dataToStore.location = { ...dataToStore.location, rawRows: stamped.length > 500 ? [] : stamped };
           }
           if (dataToStore.loc) {
-            dataToStore.loc = { ...dataToStore.loc, rawRows: [] };
+            dataToStore.loc = dataToStore.location;
           }
-          console.log(`[Upload] Adding ${upload.type} data for year ${upload.year}:`, {
+
+          console.log(`[Upload] ${action.toUpperCase()} ${upload.type} data for year ${upload.year}:`, {
+            uploadId,
+            fileName: upload.file.name,
             hasDashboard: !!dataToStore.dashboard,
             hasLocation: !!dataToStore.location,
             hasClaims: !!dataToStore.claims,
@@ -599,6 +636,45 @@ export default function UploadPage() {
         </div>
       )}
 
+      {/* Upload History — shows all files ingested for the current year */}
+      {existingUploads.length > 0 && (
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+            <Database className="h-5 w-5 text-gray-500" />
+            <div>
+              <h2 className="font-semibold text-gray-900">Data Store — {currentYear}</h2>
+              <p className="text-xs text-gray-500">{existingUploads.length} file(s) loaded. Dashboard replaces on re-upload; Location &amp; Claims append new rows.</p>
+            </div>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {existingUploads.map((rec) => {
+              const catColor = rec.category === 'Dashboard' ? 'bg-teal-500' : rec.category === 'Location' ? 'bg-blue-500' : 'bg-amber-500';
+              return (
+                <div key={rec.id} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50 transition">
+                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${catColor}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 truncate">{rec.fileName}</p>
+                    <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{new Date(rec.uploadedAt).toLocaleString()}</span>
+                      <span>{rec.category}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${rec.action === 'append' ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}`}>{rec.action}</span>
+                      {rec.rowCount > 0 && <span>{rec.rowCount.toLocaleString()} rows</span>}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => removeUpload(currentYear, rec.id)}
+                    className="text-gray-400 hover:text-red-600 transition shrink-0"
+                    title="Remove this upload"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Supported Formats */}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
@@ -606,15 +682,15 @@ export default function UploadPage() {
             <div className="w-3 h-3 rounded-full bg-teal-500" />
             <h3 className="font-semibold text-gray-900">Dashboard CSV</h3>
           </div>
-          <p className="text-xs text-gray-600 mb-2">RptManagementDashboard format</p>
-          <p className="text-xs text-gray-500">Line 1: Facility name, Line 2: Report description with dates, Line 3: Column headers (Date, Admissions, Revenue, etc.), Lines 4+: Monthly data</p>
+          <p className="text-xs text-gray-600 mb-2">RptManagementDashboard format — replaces on re-upload</p>
+          <p className="text-xs text-gray-500">Line 1: Facility name, Line 2: Report description with dates, Line 3: Column headers, Lines 4+: Section-based metric rows</p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-3 h-3 rounded-full bg-blue-500" />
             <h3 className="font-semibold text-gray-900">Location/Episode CSV</h3>
           </div>
-          <p className="text-xs text-gray-600 mb-2">CPTStatisticsLOC format</p>
+          <p className="text-xs text-gray-600 mb-2">CPTStatisticsLOC format — appends on re-upload</p>
           <p className="text-xs text-gray-500">Patient-level data with columns: Episode, Patient Name, Medical Aid, Doctor, Specialty, ICD Code, CPT Code, LOS, etc.</p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
@@ -622,7 +698,7 @@ export default function UploadPage() {
             <div className="w-3 h-3 rounded-full bg-amber-500" />
             <h3 className="font-semibold text-gray-900">Claims CSV</h3>
           </div>
-          <p className="text-xs text-gray-600 mb-2">APAC/EDI claims format</p>
+          <p className="text-xs text-gray-600 mb-2">APAC/EDI claims format — appends on re-upload</p>
           <p className="text-xs text-gray-500">Claims records with: Claim ID, Status, Amount, Scheme, Doctor, Date, Rejection Reason, etc.</p>
         </div>
       </div>

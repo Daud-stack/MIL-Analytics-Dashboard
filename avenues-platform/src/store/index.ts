@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { StoreState, FilterState, YearData, Theme, MONTHS, DashboardMetrics } from '@/types';
+import { StoreState, FilterState, YearData, Theme, MONTHS, DashboardMetrics, UploadRecord } from '@/types';
 
 const currentYear = new Date().getFullYear();
 
@@ -135,117 +135,131 @@ export const useStore = create<StoreState>()(
 
       addYearData: (year: number, data: YearData) => {
         // Normalize dashboard metrics ONCE at storage time (not in selectors)
-        const normalizedData = {
+        const normalizedData: YearData = {
           ...data,
           dash: normalizeDashboardMetrics(data.dash),
           dashboard: normalizeDashboardMetrics(data.dashboard),
+          uploads: data.uploads || [],
         };
 
         set((state) => {
           const newYears = new Map(state.years);
           const existing = newYears.get(year);
-          if (existing) {
-            // MERGE: keep existing data for types not present in new data.
-            // For Dashboard: if both exist, ADDITIVELY merge monthly arrays
-            // (supports multiple facility files for same year)
-            let mergedDashboard = normalizedData.dashboard || existing.dashboard;
-            if (normalizedData.dashboard && existing.dashboard) {
-              const a = existing.dashboard;
-              const b = normalizedData.dashboard;
-              const addArrays = (x: number[], y: number[]) => x.map((v, i) => v + (y[i] || 0));
-              const mergeRecordArrays = (x: Record<string, number[]>, y: Record<string, number[]>) => {
-                const result: Record<string, number[]> = { ...x };
-                for (const [key, arr] of Object.entries(y)) {
-                  result[key] = result[key] ? addArrays(result[key], arr) : [...arr];
-                }
-                return result;
-              };
-              mergedDashboard = {
-                ...b,
-                year,
-                totalRevenue: a.totalRevenue + b.totalRevenue,
-                monthRevenue: addArrays(a.monthRevenue, b.monthRevenue),
-                monthEpisodes: addArrays(a.monthEpisodes, b.monthEpisodes),
-                admCasualty: addArrays(a.admCasualty, b.admCasualty),
-                admDay: addArrays(a.admDay, b.admDay),
-                admInpatient: addArrays(a.admInpatient, b.admInpatient),
-                admLab: addArrays(a.admLab, b.admLab),
-                theatreCases: addArrays(a.theatreCases, b.theatreCases),
-                theatreMinutes: addArrays(a.theatreMinutes, b.theatreMinutes),
-                theatreUtil: addArrays(a.theatreUtil, b.theatreUtil),
-                theatrePctOcc: addArrays(a.theatrePctOcc, b.theatrePctOcc),
-                pharmacyRx: addArrays(a.pharmacyRx, b.pharmacyRx),
-                pharmacyRev: addArrays(a.pharmacyRev, b.pharmacyRev),
-                occupancyBeds: addArrays(a.occupancyBeds, b.occupancyBeds),
-                occMidnight: addArrays(a.occMidnight, b.occMidnight),
-                casToInpatient: addArrays(a.casToInpatient, b.casToInpatient),
-                epsFinalised: addArrays(a.epsFinalised, b.epsFinalised),
-                dischNotFinalised: addArrays(a.dischNotFinalised, b.dischNotFinalised),
-                revPerPatDay: addArrays(a.revPerPatDay, b.revPerPatDay),
-                gpEthical: addArrays(a.gpEthical, b.gpEthical),
-                gpSurgical: addArrays(a.gpSurgical, b.gpSurgical),
-                revLocation: mergeRecordArrays(a.revLocation, b.revLocation),
-                patientDays: mergeRecordArrays(a.patientDays, b.patientDays),
-                pctOccWard: mergeRecordArrays(a.pctOccWard, b.pctOccWard),
-                patDaysWard: mergeRecordArrays(a.patDaysWard, b.patDaysWard),
-                patDaysLOC: mergeRecordArrays(a.patDaysLOC, b.patDaysLOC),
-                admPerWard: mergeRecordArrays(a.admPerWard, b.admPerWard),
-                debtRecon: {
-                  // For debtors: use the LATEST file's values (not additive — these are balances)
-                  brought: b.debtRecon.brought.some(v => v > 0) ? b.debtRecon.brought : a.debtRecon.brought,
-                  revenue: addArrays(a.debtRecon.revenue, b.debtRecon.revenue),
-                  payments: addArrays(a.debtRecon.payments, b.debtRecon.payments),
-                  sundries: addArrays(a.debtRecon.sundries, b.debtRecon.sundries),
-                  total: b.debtRecon.total.some(v => v > 0) ? b.debtRecon.total : a.debtRecon.total,
-                },
-                payments: {
-                  deposits: addArrays(a.payments.deposits, b.payments.deposits),
-                  individual: addArrays(a.payments.individual, b.payments.individual),
-                  medAid: addArrays(a.payments.medAid, b.payments.medAid),
-                  batched: addArrays(a.payments.batched, b.payments.batched),
-                },
-              };
+
+          if (!existing) {
+            // First upload for this year — store directly
+            newYears.set(year, normalizedData);
+            return { years: newYears, currentYear: year };
+          }
+
+          // ── MERGE with existing year data ──
+          // Strategy per category:
+          //   Dashboard → REPLACE (aggregate metrics, re-uploading = correction)
+          //   Location  → APPEND  (row-level, daily updates add new episodes)
+          //   Claims    → APPEND  (row-level, daily updates add new claims)
+
+          // Dashboard: latest upload always wins (no additive doubling)
+          const mergedDashboard = normalizedData.dashboard || existing.dashboard;
+
+          // Location: APPEND — merge aggregates, dedup doctors by name
+          let mergedLocation = normalizedData.location || existing.location;
+          if (normalizedData.location && existing.location) {
+            const a = existing.location;
+            const b = normalizedData.location;
+
+            // Merge doctors by name: if doctor exists, take the HIGHER values (dedup-safe)
+            const docMap = new Map<string, typeof a.doctors[0]>();
+            for (const d of a.doctors) docMap.set(d.name, d);
+            for (const d of b.doctors) {
+              const ex = docMap.get(d.name);
+              if (ex) {
+                // Dedup: take the max of each aggregate (handles re-upload of same file)
+                docMap.set(d.name, {
+                  ...d,
+                  episodes: Math.max(ex.episodes, d.episodes),
+                  revenue: Math.max(ex.revenue, d.revenue),
+                  avgLOS: d.avgLOS || ex.avgLOS,
+                  patients: Math.max(ex.patients, d.patients),
+                });
+              } else {
+                docMap.set(d.name, d);
+              }
             }
 
-            // For Location: merge doctor lists
-            let mergedLocation = normalizedData.location || existing.location;
-            if (normalizedData.location && existing.location) {
-              const aDocs = existing.location.doctors || [];
-              const bDocs = normalizedData.location.doctors || [];
-              // Merge doctors by name
-              const docMap = new Map<string, typeof aDocs[0]>();
-              for (const d of aDocs) docMap.set(d.name, d);
-              for (const d of bDocs) {
-                const ex = docMap.get(d.name);
-                if (ex) {
-                  docMap.set(d.name, { ...ex, episodes: ex.episodes + d.episodes, revenue: ex.revenue + d.revenue, patients: ex.patients + d.patients });
+            // Merge code maps (dedup by key — take max count)
+            const mergeCodeMaps = (
+              x: Record<string, { count: number; desc: string }>,
+              y: Record<string, { count: number; desc: string }>
+            ) => {
+              const result = { ...x };
+              for (const [code, info] of Object.entries(y)) {
+                if (result[code]) {
+                  result[code] = { count: Math.max(result[code].count, info.count), desc: info.desc || result[code].desc };
                 } else {
-                  docMap.set(d.name, d);
+                  result[code] = info;
                 }
               }
-              mergedLocation = {
-                ...normalizedData.location,
-                episodes: (existing.location.episodes || 0) + (normalizedData.location.episodes || 0),
-                totalRevenue: (existing.location.totalRevenue || 0) + (normalizedData.location.totalRevenue || 0),
-                doctors: Array.from(docMap.values()),
-                rawRows: [...(existing.location.rawRows || []), ...(normalizedData.location?.rawRows || [])],
-              };
-            }
-
-            const merged: YearData = {
-              year,
-              dash: mergedDashboard,
-              dashboard: mergedDashboard,
-              loc: mergedLocation,
-              location: mergedLocation,
-              apac: normalizedData.claims || existing.claims,
-              claims: normalizedData.claims || existing.claims,
+              return result;
             };
-            newYears.set(year, merged);
-          } else {
-            newYears.set(year, normalizedData);
+
+            // Merge simple count maps (take max for dedup safety)
+            const mergeCountMaps = (x: Record<string, number>, y: Record<string, number>) => {
+              const result = { ...x };
+              for (const [k, v] of Object.entries(y)) {
+                result[k] = Math.max(result[k] || 0, v);
+              }
+              return result;
+            };
+
+            // Merge monthly arrays: element-wise max (dedup-safe for same-file re-upload)
+            const maxArrays = (x: number[], y: number[]) =>
+              Array.from({ length: 12 }, (_, i) => Math.max(x[i] || 0, y[i] || 0));
+
+            // For truly NEW data (different date ranges), use additive merge
+            // Heuristic: if total episodes differ significantly, it's new data → add
+            const isNewData = Math.abs(a.episodes - b.episodes) > (a.episodes * 0.1);
+            const addArrays = (x: number[], y: number[]) => x.map((v, i) => v + (y[i] || 0));
+            const mergeArrays = isNewData ? addArrays : maxArrays;
+
+            mergedLocation = {
+              ...b,
+              year,
+              episodes: isNewData ? a.episodes + b.episodes : Math.max(a.episodes, b.episodes),
+              totalRevenue: isNewData ? a.totalRevenue + b.totalRevenue : Math.max(a.totalRevenue, b.totalRevenue),
+              monthEpisodes: mergeArrays(a.monthEpisodes, b.monthEpisodes),
+              monthRevenue: mergeArrays(a.monthRevenue, b.monthRevenue),
+              doctors: Array.from(docMap.values()).sort((x, y) => y.revenue - x.revenue),
+              icdCodes: mergeCodeMaps(a.icdCodes, b.icdCodes),
+              cptCodes: mergeCodeMaps(a.cptCodes, b.cptCodes),
+              specialties: mergeCountMaps(a.specialties, b.specialties),
+              medAids: mergeCountMaps(a.medAids, b.medAids),
+              ageGroups: mergeCountMaps(a.ageGroups, b.ageGroups),
+              genders: mergeCountMaps(a.genders, b.genders),
+              los: mergeCountMaps(a.los, b.los),
+              rawRows: [...(a.rawRows || []), ...(b.rawRows || [])],
+            };
           }
-          // Auto-switch to the year that was just added
+
+          // Claims: latest upload replaces (append not yet needed)
+          const mergedClaims = normalizedData.claims || existing.claims;
+
+          // Merge upload history
+          const mergedUploads = [
+            ...(existing.uploads || []),
+            ...(normalizedData.uploads || []),
+          ];
+
+          const merged: YearData = {
+            year,
+            dash: mergedDashboard,
+            dashboard: mergedDashboard,
+            loc: mergedLocation,
+            location: mergedLocation,
+            apac: mergedClaims,
+            claims: mergedClaims,
+            uploads: mergedUploads,
+          };
+          newYears.set(year, merged);
           return { years: newYears, currentYear: year };
         });
       },
@@ -254,6 +268,43 @@ export const useStore = create<StoreState>()(
         set((state) => {
           const newYears = new Map(state.years);
           newYears.delete(year);
+          return { years: newYears };
+        });
+      },
+
+      removeUpload: (year: number, uploadId: string) => {
+        set((state) => {
+          const newYears = new Map(state.years);
+          const existing = newYears.get(year);
+          if (!existing) return state;
+
+          const upload = (existing.uploads || []).find(u => u.id === uploadId);
+          if (!upload) return state;
+
+          // Remove the upload record
+          const updatedUploads = (existing.uploads || []).filter(u => u.id !== uploadId);
+
+          // If this was the only upload for that category, null out the data slot
+          const remainingForCategory = updatedUploads.filter(u => u.category === upload.category);
+          const updated: YearData = {
+            ...existing,
+            uploads: updatedUploads,
+          };
+
+          if (remainingForCategory.length === 0) {
+            if (upload.category === 'Dashboard') {
+              updated.dash = null;
+              updated.dashboard = null;
+            } else if (upload.category === 'Location') {
+              updated.loc = null;
+              updated.location = null;
+            } else if (upload.category === 'Claims') {
+              updated.apac = null;
+              updated.claims = null;
+            }
+          }
+
+          newYears.set(year, updated);
           return { years: newYears };
         });
       },
@@ -311,9 +362,9 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'avenues-clinic-store',
-      version: 2,
+      version: 3,
       migrate: (persistedState, version) => {
-        if (!persistedState || version < 2) {
+        if (!persistedState || version < 3) {
           return {
             ...initialState,
             years: new Map<number, YearData>(),
@@ -364,6 +415,7 @@ export const useStore = create<StoreState>()(
                   location: data.location,
                   apac: data.apac,
                   claims: data.claims,
+                  uploads: data.uploads || [],
                 },
               ]);
             } else {
@@ -487,9 +539,17 @@ export const useSetYear = () => useStore((state) => state.setYear);
 export const useSetMonth = () => useStore((state) => state.setMonth);
 export const useAddYearData = () => useStore((state) => state.addYearData);
 export const useRemoveYear = () => useStore((state) => state.removeYear);
+export const useRemoveUpload = () => useStore((state) => state.removeUpload);
 export const useToggleCompare = () => useStore((state) => state.toggleCompare);
 export const useClearCompare = () => useStore((state) => state.clearCompare);
 export const useSetTheme = () => useStore((state) => state.setTheme);
 export const useToggleSidebar = () => useStore((state) => state.toggleSidebar);
 export const useSetFilters = () => useStore((state) => state.setFilters);
 export const useResetStore = () => useStore((state) => state.reset);
+
+// Upload history for current year
+export const useUploads = () =>
+  useStore((state) => {
+    const yearData = state.years.get(state.currentYear);
+    return yearData?.uploads || [];
+  });

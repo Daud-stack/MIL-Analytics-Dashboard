@@ -442,6 +442,7 @@ export function generateSampleYearData(year: number): YearData {
     location: generateSampleLocationData(year),
     apac: generateSampleClaimsData(year),
     claims: generateSampleClaimsData(year),
+    uploads: [],
   };
 }
 

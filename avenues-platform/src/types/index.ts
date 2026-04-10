@@ -143,6 +143,18 @@ export interface ClaimSchemeData {
   pending: number;
 }
 
+// Upload tracking — one record per file ingested
+export type UploadCategory = 'Dashboard' | 'Location' | 'Claims';
+
+export interface UploadRecord {
+  id: string;                 // unique upload id (crypto.randomUUID)
+  category: UploadCategory;   // which data slot this populated
+  fileName: string;           // original file name
+  uploadedAt: string;         // ISO timestamp
+  rowCount: number;           // rows/data-points contributed
+  action: 'replace' | 'append'; // was this a fresh load or an append?
+}
+
 // Year data aggregation
 export interface YearData {
   year: number;
@@ -152,6 +164,7 @@ export interface YearData {
   location: LocationData | null; // alias for consistency
   apac: ClaimsMetrics | null;
   claims: ClaimsMetrics | null; // alias for consistency
+  uploads: UploadRecord[];     // history of all files ingested for this year
 }
 
 // User & Auth Types
@@ -402,6 +415,7 @@ export interface StoreState {
   setMonth: (month: number) => void;
   addYearData: (year: number, data: YearData) => void;
   removeYear: (year: number) => void;
+  removeUpload: (year: number, uploadId: string) => void;
   toggleCompare: (year: number) => void;
   clearCompare: () => void;
   setTheme: (theme: Theme) => void;
