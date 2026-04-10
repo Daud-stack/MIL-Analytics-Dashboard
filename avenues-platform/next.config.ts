@@ -28,6 +28,28 @@ const nextConfig: NextConfig = {
   // Turbopack configuration for Next.js 16
   turbopack: {},
 
+  // Webpack: ignore file-watcher runtime dirs so writing to data/ingested.json
+  // doesn't trigger infinite dev-server refresh loops
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.watchOptions = {
+        ...config.watchOptions,
+        ignored: [
+          ...(Array.isArray(config.watchOptions?.ignored)
+            ? config.watchOptions.ignored
+            : config.watchOptions?.ignored
+              ? [config.watchOptions.ignored]
+              : []),
+          '**/data/**',
+          '**/uploads/**',
+          '**/archived/**',
+          '**/scripts/**',
+        ],
+      };
+    }
+    return config;
+  },
+
   // Headers for security
   async headers() {
     return [

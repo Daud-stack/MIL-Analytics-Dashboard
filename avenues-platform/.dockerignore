@@ -43,6 +43,11 @@ Dockerfile*
 docker-compose*.yml
 .dockerignore
 
+# Auto-ingest data (file watcher runtime data)
+data/
+uploads/
+archived/
+
 # Documentation
 README.md
 SETUP.md
