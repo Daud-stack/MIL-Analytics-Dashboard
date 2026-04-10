@@ -303,21 +303,32 @@ export function parseDashboardCSV(csvText: string): YearData {
   const isFormatB = firstHeader.startsWith('month');   // "Months\tJanuary\t..."
   const isFormatC = firstHeader === 'dataset';          // "DataSet,1,2,3,...,Total"
 
-  // ── For Format C: determine if numeric columns are months or days ──
-  // Parse date range from line 2: "...Capture Date DD/MM/YYYY To DD/MM/YYYY"
-  let formatCStartMonth = 0; // 0-based month index of the start date
-  let formatCIsDaily = false; // true if single-month report (columns = days)
+  // ── For Format C: determine column meaning from date range ──
+  // "Capture Date DD/MM/YYYY To DD/MM/YYYY"
+  // If range spans multiple months (e.g., 01/01 to 31/12) → columns are MONTHS (1=Jan, 2=Feb, ...)
+  // If range is within a single month (e.g., 01/04 to 30/04) → columns are DAYS, aggregate into that month
+  // If range is a few days / 1 week → columns are DAYS, map each to its calendar month
+  let formatCStartDate: Date | null = null;
+  let formatCIsMonthly = false; // true = columns are month numbers
 
   if (isFormatC) {
     const dateRangeMatch = line2.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+To\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
     if (dateRangeMatch) {
+      const startDay = parseInt(dateRangeMatch[1], 10);
       const startMonth = parseInt(dateRangeMatch[2], 10) - 1; // 0-based
+      const startYear = parseInt(dateRangeMatch[3], 10);
       const endMonth = parseInt(dateRangeMatch[5], 10) - 1;
-      formatCStartMonth = startMonth;
-      formatCIsDaily = (startMonth === endMonth);
+      const endYear = parseInt(dateRangeMatch[6], 10);
+
+      formatCStartDate = new Date(startYear, startMonth, startDay);
+
+      // If the range spans more than 1 month, columns represent months
+      const totalMonthSpan = (endYear - startYear) * 12 + (endMonth - startMonth);
+      formatCIsMonthly = totalMonthSpan > 1;
+
       console.log('[Parser] Date range:', dateRangeMatch[0],
-        '| Mode:', formatCIsDaily ? 'daily' : 'monthly',
-        '| Start month:', startMonth);
+        '| Mode:', formatCIsMonthly ? 'monthly (columns=months)' : 'daily (columns=days)',
+        '| Month span:', totalMonthSpan);
     }
   }
 
@@ -382,21 +393,31 @@ export function parseDashboardCSV(csvText: string): YearData {
 
   } else if (isFormatC) {
     // ── FORMAT C: Section-based with numeric columns ──
-    // For monthly reports: column "1" = month at startMonth, "2" = startMonth+1, etc.
-    // For daily reports: all columns map to formatCStartMonth (aggregate days into month)
-    parseSectionRows(3, delim, (col) => {
-      if (formatCIsDaily) {
-        // All day columns aggregate into the single month
-        return formatCStartMonth;
-      } else {
-        // Column "1" = month 0 (Jan), "2" = month 1 (Feb), etc.
-        // The header value at this position tells us the month number
-        const headerVal = parseInt(headerFields[col]?.trim() || '0', 10);
-        if (headerVal >= 1 && headerVal <= 12) {
-          return headerVal - 1; // convert 1-based month to 0-based
+    // Pre-compute a mapping: column position → 0-based month index
+    const colToMonth: number[] = new Array(headerFields.length).fill(-1);
+
+    for (let i = 1; i < headerFields.length; i++) {
+      const headerVal = headerFields[i]?.trim().toLowerCase();
+      if (!headerVal || headerVal === 'total') continue;
+      const num = parseInt(headerVal, 10);
+      if (isNaN(num) || num < 1) continue;
+
+      if (formatCIsMonthly) {
+        // Columns are month numbers: 1=Jan, 2=Feb, ..., 12=Dec
+        if (num >= 1 && num <= 12) {
+          colToMonth[i] = num - 1;
         }
-        return -1; // skip "Total" or invalid
+      } else if (formatCStartDate) {
+        // Columns are day offsets from start date
+        // Column "1" = start date, "2" = start date + 1, etc.
+        const date = new Date(formatCStartDate.getTime());
+        date.setDate(date.getDate() + num - 1);
+        colToMonth[i] = date.getMonth();
       }
+    }
+
+    parseSectionRows(3, delim, (col) => {
+      return colToMonth[col] ?? -1;
     });
 
   } else {
