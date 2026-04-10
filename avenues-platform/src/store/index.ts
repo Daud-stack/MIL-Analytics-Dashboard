@@ -586,23 +586,29 @@ export const useSetFilters = () => useStore((state) => state.setFilters);
 export const useResetStore = () => useStore((state) => state.reset);
 
 // Upload history for current year
+const EMPTY_UPLOADS: UploadRecord[] = [];
+const EMPTY_DATASETS: Record<string, GenericDataset> = {};
+const EMPTY_DATASET_LIST: GenericDataset[] = [];
+
 export const useUploads = () =>
   useStore((state) => {
     const yearData = state.years.get(state.currentYear);
-    return yearData?.uploads || [];
+    return yearData?.uploads ?? EMPTY_UPLOADS;
   });
 
 // Generic datasets for current year
 export const useDatasets = () =>
   useStore((state) => {
     const yearData = state.years.get(state.currentYear);
-    return yearData?.datasets || {};
+    return yearData?.datasets ?? EMPTY_DATASETS;
   });
 
 export const useDatasetList = () =>
   useStore((state) => {
     const yearData = state.years.get(state.currentYear);
-    return Object.values(yearData?.datasets || {});
+    const datasets = yearData?.datasets;
+    if (!datasets || Object.keys(datasets).length === 0) return EMPTY_DATASET_LIST;
+    return Object.values(datasets);
   });
 
 export const useAddDataset = () => useStore((state) => state.addDataset);
