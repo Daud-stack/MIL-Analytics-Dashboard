@@ -1,66 +1,39 @@
+import { auth } from "@/auth";
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 
-/**
- * Proxy for route protection and auth redirects.
- *
- * In development, all routes are accessible without auth.
- * In production, protected routes require a valid session cookie.
- */
-export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+export default auth((req) => {
+  const isLoggedIn = !!req.auth;
+  const isAuthPage =
+    req.nextUrl.pathname.startsWith("/login") ||
+    req.nextUrl.pathname.startsWith("/register");
+  const isApiAuth = req.nextUrl.pathname.startsWith("/api/auth");
+  const isPublicApi =
+    req.nextUrl.pathname.startsWith("/api/health");
 
-  // Skip auth check in development for easier iteration
-  if (process.env.NODE_ENV === "development") {
+  // Always allow auth endpoints
+  if (isApiAuth || isPublicApi) {
     return NextResponse.next();
   }
 
-  // Public routes that don't require authentication
-  const publicRoutes = [
-    "/login",
-    "/register",
-    "/forgot-password",
-    "/reset-password",
-    "/health",
-  ];
-
-  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
-
-  // API routes for authentication don't need proxy protection
-  if (pathname.startsWith("/api/auth")) {
-    return NextResponse.next();
+  // Redirect logged-in users away from auth pages
+  if (isAuthPage && isLoggedIn) {
+    return NextResponse.redirect(new URL("/dashboard", req.nextUrl));
   }
 
-  // Check for session cookie (NextAuth sets this)
-  const sessionToken =
-    request.cookies.get("__Secure-authjs.session-token") ??
-    request.cookies.get("authjs.session-token") ??
-    request.cookies.get("next-auth.session-token");
-
-  const isAuthenticated = !!sessionToken;
-
-  // Public routes can be accessed by anyone
-  if (isPublicRoute) {
-    return NextResponse.next();
-  }
-
-  // All other routes require authentication
-  if (!isAuthenticated) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // If authenticated and trying to access auth pages, redirect to dashboard
-  if (isAuthenticated && (pathname === "/login" || pathname === "/register")) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+  // Redirect unauthenticated users to login
+  if (!isAuthPage && !isLoggedIn) {
+    const callbackUrl = encodeURIComponent(req.nextUrl.pathname + req.nextUrl.search);
+    return NextResponse.redirect(
+      new URL(`/login?callbackUrl=${callbackUrl}`, req.nextUrl)
+    );
   }
 
   return NextResponse.next();
-}
+});
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|public).*)",
+    // Match all paths except static files and images
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
