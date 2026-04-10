@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
         email: data.email.toLowerCase().trim(),
         password: hashedPassword,
         role: data.role,
-        orgId: org.id,
+        org: { connect: { id: org.id } },
       },
     });
 
