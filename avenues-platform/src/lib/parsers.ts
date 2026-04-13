@@ -280,7 +280,10 @@ function emptyDashMetrics(year: number): DashboardMetrics {
  *   - Otherwise → Format A
  */
 export function parseDashboardCSV(csvText: string): YearData {
-  const lines = csvText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  // Keep ALL lines (including blanks) so section breaks can be detected
+  const rawLines = csvText.split('\n').map(l => l.trim());
+  // Filtered version for header detection (first 3 non-empty lines)
+  const lines = rawLines.filter(l => l.length > 0);
 
   // Extract facility name and year
   const facilityName = lines[0] || 'Avenues Clinic';
@@ -299,6 +302,10 @@ export function parseDashboardCSV(csvText: string): YearData {
   const headerLine = lines[2] || '';
   const headerFields = splitCSVLine(headerLine, delim);
   const firstHeader = headerFields[0]?.toLowerCase().trim() || '';
+
+  // Find the raw line index of the header so section parsing starts from the correct position
+  const rawHeaderIdx = rawLines.findIndex(l => l.trim() === headerLine.trim());
+  const rawDataStart = rawHeaderIdx >= 0 ? rawHeaderIdx + 1 : 3;
 
   const isFormatB = firstHeader.startsWith('month');   // "Months\tJanuary\t..."
   const isFormatC = firstHeader === 'dataset';          // "DataSet,1,2,3,...,Total"
@@ -333,6 +340,8 @@ export function parseDashboardCSV(csvText: string): YearData {
   }
 
   // ── Helper: parse section-based rows (shared by Format B and C) ──
+  // Uses rawLines (with blanks) so blank lines reset the section context.
+  // startLine is 0-based index into rawLines.
   function parseSectionRows(
     startLine: number,
     lineDelim: string,
@@ -340,13 +349,20 @@ export function parseDashboardCSV(csvText: string): YearData {
   ) {
     let currentSection = '';
 
-    for (let lineIdx = startLine; lineIdx < lines.length; lineIdx++) {
-      const line = lines[lineIdx];
+    for (let lineIdx = startLine; lineIdx < rawLines.length; lineIdx++) {
+      const line = rawLines[lineIdx];
+
+      // Blank line = section break → reset section so standalone metrics don't inherit a stale section
+      if (line === '') {
+        currentSection = '';
+        continue;
+      }
+
       const fields = splitCSVLine(line, lineDelim);
       const firstField = (fields[0] || '').trim();
 
-      // Skip "Total" rows
-      if (firstField.toLowerCase() === 'total') continue;
+      // Skip "Total" and "Average" rows
+      if (firstField.toLowerCase() === 'total' || firstField.toLowerCase() === 'average') continue;
 
       // Is this a section header? Check if fields[1..] have any non-zero numeric data.
       const hasData = fields.slice(1).some(f => {
@@ -389,34 +405,53 @@ export function parseDashboardCSV(csvText: string): YearData {
     for (let i = 1; i < headerFields.length; i++) {
       monthIndices.push(getMonthIndex(headerFields[i]?.trim() || ''));
     }
-    parseSectionRows(3, delim, (col) => monthIndices[col - 1] ?? -1);
+    parseSectionRows(rawDataStart, delim, (col) => monthIndices[col - 1] ?? -1);
 
   } else if (isFormatC) {
-    // ── FORMAT C: Section-based with numeric columns ──
-    // Pre-compute a mapping: column position → 0-based month index
+    // ── FORMAT C: Section-based with "DataSet" header ──
+    // Columns can be either:
+    //   - Numeric: "DataSet,1,2,3,...,12,Total" (month or day numbers)
+    //   - Month names: "DataSet,January,February,...,December,Total" (hybrid format)
     const colToMonth: number[] = new Array(headerFields.length).fill(-1);
 
+    // First, try month name mapping (hybrid: DataSet + month names)
+    let monthNamesMapped = 0;
     for (let i = 1; i < headerFields.length; i++) {
-      const headerVal = headerFields[i]?.trim().toLowerCase();
-      if (!headerVal || headerVal === 'total') continue;
-      const num = parseInt(headerVal, 10);
-      if (isNaN(num) || num < 1) continue;
-
-      if (formatCIsMonthly) {
-        // Columns are month numbers: 1=Jan, 2=Feb, ..., 12=Dec
-        if (num >= 1 && num <= 12) {
-          colToMonth[i] = num - 1;
-        }
-      } else if (formatCStartDate) {
-        // Columns are day offsets from start date
-        // Column "1" = start date, "2" = start date + 1, etc.
-        const date = new Date(formatCStartDate.getTime());
-        date.setDate(date.getDate() + num - 1);
-        colToMonth[i] = date.getMonth();
+      const headerVal = headerFields[i]?.trim() || '';
+      if (!headerVal || headerVal.toLowerCase() === 'total') continue;
+      const mIdx = getMonthIndex(headerVal);
+      if (mIdx >= 0) {
+        colToMonth[i] = mIdx;
+        monthNamesMapped++;
       }
     }
 
-    parseSectionRows(3, delim, (col) => {
+    // If month names didn't work, fall back to numeric column mapping
+    if (monthNamesMapped === 0) {
+      for (let i = 1; i < headerFields.length; i++) {
+        const headerVal = headerFields[i]?.trim().toLowerCase();
+        if (!headerVal || headerVal === 'total') continue;
+        const num = parseInt(headerVal, 10);
+        if (isNaN(num) || num < 1) continue;
+
+        if (formatCIsMonthly) {
+          // Columns are month numbers: 1=Jan, 2=Feb, ..., 12=Dec
+          if (num >= 1 && num <= 12) {
+            colToMonth[i] = num - 1;
+          }
+        } else if (formatCStartDate) {
+          // Columns are day offsets from start date
+          const date = new Date(formatCStartDate.getTime());
+          date.setDate(date.getDate() + num - 1);
+          colToMonth[i] = date.getMonth();
+        }
+      }
+    }
+
+    console.log('[Parser] Format C column mapping:', colToMonth.filter(m => m >= 0).length, 'mapped columns',
+      monthNamesMapped > 0 ? '(month names)' : '(numeric)');
+
+    parseSectionRows(rawDataStart, delim, (col) => {
       return colToMonth[col] ?? -1;
     });
 
@@ -443,14 +478,25 @@ export function parseDashboardCSV(csvText: string): YearData {
 
   // ── Map rawColumns into structured metrics ──
 
-  /** Get monthly array for a column by exact name, or return null */
+  /** Get monthly array for a column by exact or fuzzy name, or return null */
   function col(name: string): number[] | null {
-    return metrics.rawColumns[name] ?? null;
+    // Exact match
+    if (metrics.rawColumns[name]) return metrics.rawColumns[name];
+    // Try suffix match (handles section prefix changes, e.g., "Total Number of X-Y" matches "Number of X-Y")
+    const lowerName = name.toLowerCase();
+    for (const key of Object.keys(metrics.rawColumns)) {
+      if (key.toLowerCase().endsWith(lowerName)) return metrics.rawColumns[key];
+    }
+    // Try contains match
+    for (const key of Object.keys(metrics.rawColumns)) {
+      if (key.toLowerCase().includes(lowerName)) return metrics.rawColumns[key];
+    }
+    return null;
   }
 
   /** Get monthly array, defaulting to z12 */
   function colZ(name: string): number[] {
-    return metrics.rawColumns[name] ?? z12();
+    return col(name) ?? z12();
   }
 
   // ── Admissions ──
@@ -603,7 +649,9 @@ export function parseDashboardCSV(csvText: string): YearData {
   metrics.debtRecon.brought = colZ('Debtors Reconciliation Per Day-Balance Brought Forward');
   metrics.debtRecon.revenue = colZ('Debtors Reconciliation Per Day-Revenue');
   metrics.debtRecon.payments = colZ('Debtors Reconciliation Per Day-Payments');
-  metrics.debtRecon.sundries = colZ('Debtors Reconciliation Per Day-SunList');
+  metrics.debtRecon.sundries = col('Debtors Reconciliation Per Day-SunList')
+    || col('Debtors Reconciliation Per Day-Sundries')
+    || z12();
   // Calculate total: brought + revenue - payments + sundries
   metrics.debtRecon.total = z12().map((_, i) =>
     metrics.debtRecon.brought[i] + metrics.debtRecon.revenue[i] - Math.abs(metrics.debtRecon.payments[i]) + metrics.debtRecon.sundries[i]
