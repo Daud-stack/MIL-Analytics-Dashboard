@@ -107,6 +107,48 @@ export interface DashboardMetrics {
   accountSundries: number[];
 }
 
+// Casualty-to-Inpatient Conversion Analytics
+export interface ConversionMetrics {
+  /** Monthly casualty episode counts (12 months) */
+  monthlyCasualty: number[];
+  /** Monthly inpatient episode counts (12 months) */
+  monthlyInpatient: number[];
+  /** Monthly conversion counts — casualty patients who became inpatient same day (12 months) */
+  monthlyConversions: number[];
+  /** Monthly conversion rate % (conversions / casualty * 100) */
+  monthlyConversionRate: number[];
+  /** Monthly average LOS for converted patients */
+  monthlyConversionALOS: number[];
+  /** Monthly average revenue for converted patients */
+  monthlyConversionRevenue: number[];
+  /** Top specialties that converted patients were admitted under */
+  conversionsBySpecialty: Record<string, number>;
+  /** Top ICD codes for converted patients */
+  conversionsByICD: Record<string, { count: number; desc: string }>;
+  /** Ward utilization for converted inpatient episodes */
+  conversionsByWard: Record<string, number>;
+  /** Medical aid distribution for converted patients */
+  conversionsByMedAid: Record<string, number>;
+  /** Age group distribution for converted patients */
+  conversionsByAge: Record<string, number>;
+  /** Individual conversion records for drill-down */
+  conversionRecords: ConversionRecord[];
+}
+
+export interface ConversionRecord {
+  patientName: string;
+  admDate: string;
+  casualtyEpisode: string;
+  inpatientEpisode: string;
+  specialty: string;
+  icdCode: string;
+  icdDesc: string;
+  los: number;
+  revenue: number;
+  ward: string;
+  medAid: string;
+}
+
 // Location Data Types - Enhanced
 export interface LocationData {
   year: number;
@@ -123,6 +165,8 @@ export interface LocationData {
   specialties: Record<string, number>;
   los: Record<string, number>; // length of stay distribution
   rawRows: Record<string, unknown>[];
+  /** Casualty-to-Inpatient conversion analytics */
+  conversions?: ConversionMetrics;
 }
 
 export interface DoctorMetric {

@@ -23,7 +23,7 @@ import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
 import { ChartTooltipProps } from '@/types';
 import { formatCurrency, formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
-import { useDashboard } from '@/store';
+import { useDashboard, useLocation } from '@/store';
 import { useDrillDown, useDrillDownRecord } from '@/hooks/useDrillDown';
 import { useFilterStore } from '@/store/filter';
 import Link from 'next/link';
@@ -46,7 +46,7 @@ const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   return null;
 };
 
-type TabKey = 'overview' | 'inpatient' | 'wards' | 'discharges';
+type TabKey = 'overview' | 'inpatient' | 'wards' | 'discharges' | 'conversions';
 
 export default function AdmissionsPage() {
   const dashData = useDashboard();
@@ -63,6 +63,16 @@ export default function AdmissionsPage() {
   const dischNotFinValDrill = useDrillDown(dashData?.dischNotFinalisedValue);
   const epsFinalDrill = useDrillDown(dashData?.epsFinalised);
   const patientDaysDrill = useDrillDown(dashData?.occMidnight);
+
+  // ── Location data for conversion analytics ──
+  const locData = useLocation();
+  const conv = locData?.conversions;
+  const convCasualtyDrill = useDrillDown(conv?.monthlyCasualty);
+  const convInpatientDrill = useDrillDown(conv?.monthlyInpatient);
+  const convConversionsDrill = useDrillDown(conv?.monthlyConversions);
+  const convRateDrill = useDrillDown(conv?.monthlyConversionRate);
+  const convALOSDrill = useDrillDown(conv?.monthlyConversionALOS);
+  const convRevDrill = useDrillDown(conv?.monthlyConversionRevenue);
 
   // ── Record-based drill-downs ──
   const admPerWardDrill = useDrillDownRecord(dashData?.admPerWard);
@@ -198,6 +208,7 @@ export default function AdmissionsPage() {
     { key: 'inpatient', label: 'Inpatient', icon: <BedDouble className="h-4 w-4" /> },
     { key: 'wards', label: 'By Ward', icon: <Building2 className="h-4 w-4" /> },
     { key: 'discharges', label: 'Discharges', icon: <ClipboardList className="h-4 w-4" /> },
+    { key: 'conversions', label: 'Conversions', icon: <ArrowRightLeft className="h-4 w-4" /> },
   ];
 
   return (
@@ -730,6 +741,363 @@ export default function AdmissionsPage() {
               </ResponsiveContainer>
             </div>
           </div>
+        </>
+      )}
+
+      {/* ═══════════════════════ CONVERSIONS TAB ═══════════════════════ */}
+      {activeTab === 'conversions' && (
+        <>
+          {!conv ? (
+            <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-12">
+              <div className="flex flex-col items-center justify-center gap-4">
+                <ArrowRightLeft className="h-12 w-12 text-gray-400" />
+                <div className="text-center">
+                  <h2 className="text-lg font-semibold text-gray-900">No conversion data available</h2>
+                  <p className="mt-2 text-sm text-gray-500">Upload a Location (LOC) CSV file to see casualty-to-inpatient conversion analytics.</p>
+                  <Link href="/upload"><Button className="mt-4">Upload LOC File</Button></Link>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Conversion KPIs */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                <StatCard title="Casualty Visits" value={formatNumber(convCasualtyDrill.total)} trend="neutral" color="blue" />
+                <StatCard title="Conversions" value={formatNumber(convConversionsDrill.total)} trend="neutral" color="violet" />
+                <StatCard
+                  title="Conversion Rate"
+                  value={`${convCasualtyDrill.total > 0 ? ((convConversionsDrill.total / convCasualtyDrill.total) * 100).toFixed(1) : 0}%`}
+                  trend="neutral" color="teal"
+                />
+                <StatCard
+                  title="Avg LOS (Converted)"
+                  value={`${convConversionsDrill.total > 0 ? (conv.monthlyConversionALOS.reduce((a, b) => a + b, 0) / conv.monthlyConversionALOS.filter(v => v > 0).length || 0).toFixed(1) : '—'} days`}
+                  trend="neutral" color="emerald"
+                />
+                <StatCard
+                  title="Avg Revenue (Converted)"
+                  value={formatCurrency(
+                    convConversionsDrill.total > 0
+                      ? conv.conversionRecords.reduce((s, r) => s + r.revenue, 0) / conv.conversionRecords.length
+                      : 0
+                  )}
+                  trend="neutral" color="amber"
+                />
+              </div>
+
+              {/* Conversion Charts Row 1 */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* Monthly Conversions vs Casualty Volume */}
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-200 px-5 py-4">
+                    <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Casualty Visits vs Conversions</h2>
+                    <p className="mt-1 text-xs text-gray-500">Casualty volume and patients converting to inpatient</p>
+                  </div>
+                  <div className="px-5 pb-5">
+                    <ResponsiveContainer width="100%" height={340}>
+                      <BarChart data={convCasualtyDrill.labels.map((label, i) => ({
+                        period: label,
+                        casualty: convCasualtyDrill.values[i],
+                        conversions: convConversionsDrill.values[i],
+                      }))}>
+                        <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                        <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} interval={granularity === 'day' ? 29 : granularity === 'week' ? 3 : 0} />
+                        <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend />
+                        <Bar dataKey="casualty" fill="#94a3b8" name="Casualty Visits" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="conversions" fill="#7c3aed" name="Conversions" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Conversion Rate Trend */}
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-200 px-5 py-4">
+                    <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Conversion Rate</h2>
+                    <p className="mt-1 text-xs text-gray-500">Percentage of casualty visits converting to inpatient</p>
+                  </div>
+                  <div className="px-5 pb-5">
+                    <ResponsiveContainer width="100%" height={340}>
+                      <AreaChart data={convRateDrill.labels.map((label, i) => ({
+                        period: label,
+                        rate: convRateDrill.values[i],
+                      }))}>
+                        <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                        <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} interval={granularity === 'day' ? 29 : granularity === 'week' ? 3 : 0} />
+                        <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} unit="%" />
+                        <Tooltip formatter={(value) => `${(value as number).toFixed(1)}%`} />
+                        <Area type="monotone" dataKey="rate" stroke="#0d9488" fill="#0d948820" strokeWidth={2} name="Conversion Rate %" dot={granularity === 'day' ? false : { fill: '#0d9488', r: 4 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Conversion Charts Row 2 */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* Conversions by Specialty */}
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-200 px-5 py-4">
+                    <h2 className="text-sm font-semibold text-gray-900">Conversions by Specialty</h2>
+                    <p className="mt-1 text-xs text-gray-500">Which specialties receive converted patients</p>
+                  </div>
+                  <div className="px-5 pb-5">
+                    {(() => {
+                      const specData = Object.entries(conv.conversionsBySpecialty)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 10)
+                        .map(([name, count]) => ({ name: name.length > 25 ? name.substring(0, 25) + '...' : name, count, fullName: name }));
+                      return (
+                        <ResponsiveContainer width="100%" height={Math.max(280, specData.length * 36)}>
+                          <BarChart data={specData} layout="vertical">
+                            <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                            <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                            <YAxis type="category" dataKey="name" width={180} tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} />
+                            <Tooltip content={({ active, payload }) => {
+                              if (active && payload?.[0]) {
+                                const d = payload[0].payload;
+                                return (
+                                  <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+                                    <p className="text-sm font-medium text-gray-900">{d.fullName}</p>
+                                    <p className="text-sm text-violet-600">Conversions: {formatNumber(d.count)}</p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }} />
+                            <Bar dataKey="count" fill="#7c3aed" name="Conversions" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Conversions by Ward */}
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-200 px-5 py-4">
+                    <h2 className="text-sm font-semibold text-gray-900">Conversions by Ward</h2>
+                    <p className="mt-1 text-xs text-gray-500">Where converted patients are admitted</p>
+                  </div>
+                  <div className="px-5 pb-5">
+                    <ResponsiveContainer width="100%" height={320}>
+                      <PieChart>
+                        <Pie
+                          data={Object.entries(conv.conversionsByWard)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([name, value]) => ({ name, value }))}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={100}
+                          labelLine={false}
+                          label={({ name, value }) => `${name}: ${formatNumber(value)}`}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {Object.entries(conv.conversionsByWard).sort((a, b) => b[1] - a[1]).map((_, idx) => (
+                            <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => formatNumber(value as number)} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Conversion Charts Row 3: Age + Medical Aid */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* By Age Group */}
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-200 px-5 py-4">
+                    <h2 className="text-sm font-semibold text-gray-900">Conversions by Age Group</h2>
+                  </div>
+                  <div className="px-5 pb-5">
+                    <ResponsiveContainer width="100%" height={280}>
+                      <BarChart data={['0-17', '18-29', '30-44', '45-59', '60-74', '75+'].map(ag => ({
+                        ageGroup: ag,
+                        count: conv.conversionsByAge[ag] || 0,
+                      }))}>
+                        <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                        <XAxis dataKey="ageGroup" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Bar dataKey="count" fill="#0284c7" name="Conversions" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* By Medical Aid */}
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-200 px-5 py-4">
+                    <h2 className="text-sm font-semibold text-gray-900">Conversions by Medical Aid</h2>
+                  </div>
+                  <div className="px-5 pb-5">
+                    {(() => {
+                      const maData = Object.entries(conv.conversionsByMedAid)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 8)
+                        .map(([name, count]) => ({ name: name.length > 20 ? name.substring(0, 20) + '...' : name, count, fullName: name }));
+                      return (
+                        <ResponsiveContainer width="100%" height={280}>
+                          <BarChart data={maData} layout="vertical">
+                            <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                            <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                            <YAxis type="category" dataKey="name" width={150} tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} />
+                            <Tooltip content={({ active, payload }) => {
+                              if (active && payload?.[0]) {
+                                const d = payload[0].payload;
+                                return (
+                                  <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+                                    <p className="text-sm font-medium text-gray-900">{d.fullName}</p>
+                                    <p className="text-sm text-blue-600">Conversions: {formatNumber(d.count)}</p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }} />
+                            <Bar dataKey="count" fill="#059669" name="Conversions" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Period Detail Table */}
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div className="border-b border-gray-200 px-5 py-4">
+                  <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Conversion Detail</h2>
+                  <p className="mt-1 text-xs text-gray-500">{convCasualtyDrill.points.length} period(s)</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-gray-200 bg-gray-50">
+                      <tr>
+                        <th className="px-5 py-3 text-left font-semibold text-gray-900">Period</th>
+                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Casualty</th>
+                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Inpatient</th>
+                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Conversions</th>
+                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Rate %</th>
+                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Avg LOS</th>
+                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Avg Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {convCasualtyDrill.points.map((pt, idx) => (
+                        <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="px-5 py-3 text-gray-900">{pt.label}</td>
+                          <td className="px-5 py-3 text-right text-gray-700">{formatNumber(convCasualtyDrill.values[idx])}</td>
+                          <td className="px-5 py-3 text-right text-gray-600">{formatNumber(convInpatientDrill.values[idx])}</td>
+                          <td className="px-5 py-3 text-right text-violet-700 font-medium">{formatNumber(convConversionsDrill.values[idx])}</td>
+                          <td className="px-5 py-3 text-right text-teal-700">{convRateDrill.values[idx].toFixed(1)}%</td>
+                          <td className="px-5 py-3 text-right text-gray-600">{convALOSDrill.values[idx] > 0 ? convALOSDrill.values[idx].toFixed(1) : '—'}</td>
+                          <td className="px-5 py-3 text-right text-gray-600">{convRevDrill.values[idx] > 0 ? formatCurrency(convRevDrill.values[idx]) : '—'}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-gray-50 font-semibold">
+                        <td className="px-5 py-3 text-gray-900">Total</td>
+                        <td className="px-5 py-3 text-right text-gray-900">{formatNumber(convCasualtyDrill.total)}</td>
+                        <td className="px-5 py-3 text-right text-gray-700">{formatNumber(convInpatientDrill.total)}</td>
+                        <td className="px-5 py-3 text-right text-violet-900">{formatNumber(convConversionsDrill.total)}</td>
+                        <td className="px-5 py-3 text-right text-teal-700">
+                          {convCasualtyDrill.total > 0 ? ((convConversionsDrill.total / convCasualtyDrill.total) * 100).toFixed(1) : '0'}%
+                        </td>
+                        <td className="px-5 py-3 text-right text-gray-700">
+                          {convConversionsDrill.total > 0
+                            ? (conv.conversionRecords.reduce((s, r) => s + r.los, 0) / conv.conversionRecords.length).toFixed(1)
+                            : '—'}
+                        </td>
+                        <td className="px-5 py-3 text-right text-gray-700">
+                          {convConversionsDrill.total > 0
+                            ? formatCurrency(conv.conversionRecords.reduce((s, r) => s + r.revenue, 0) / conv.conversionRecords.length)
+                            : '—'}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Top ICD Codes for Conversions */}
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div className="border-b border-gray-200 px-5 py-4">
+                  <h2 className="text-sm font-semibold text-gray-900">Top Diagnoses for Converted Patients</h2>
+                  <p className="mt-1 text-xs text-gray-500">Primary ICD codes driving casualty-to-inpatient conversions</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-gray-200 bg-gray-50">
+                      <tr>
+                        <th className="px-5 py-3 text-left font-semibold text-gray-900">ICD Code</th>
+                        <th className="px-5 py-3 text-left font-semibold text-gray-900">Description</th>
+                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Conversions</th>
+                        <th className="px-5 py-3 text-right font-semibold text-gray-900">% of Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(conv.conversionsByICD)
+                        .sort((a, b) => b[1].count - a[1].count)
+                        .slice(0, 15)
+                        .map(([code, { count, desc }], idx) => (
+                          <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-5 py-2.5 text-gray-900 font-mono text-xs">{code}</td>
+                            <td className="px-5 py-2.5 text-gray-600 text-xs">{desc.length > 60 ? desc.substring(0, 60) + '...' : desc}</td>
+                            <td className="px-5 py-2.5 text-right text-violet-700 font-medium">{formatNumber(count)}</td>
+                            <td className="px-5 py-2.5 text-right text-gray-500">
+                              {convConversionsDrill.total > 0 ? ((count / convConversionsDrill.total) * 100).toFixed(1) : 0}%
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Conversion Records (Patient-level) */}
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div className="border-b border-gray-200 px-5 py-4">
+                  <h2 className="text-sm font-semibold text-gray-900">Conversion Records</h2>
+                  <p className="mt-1 text-xs text-gray-500">Top {Math.min(50, conv.conversionRecords.length)} converted patients by revenue</p>
+                </div>
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-gray-200 bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 text-xs">Date</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 text-xs">Patient</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 text-xs">C Episode</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 text-xs">A Episode</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 text-xs">Specialty</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 text-xs">Ward</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">LOS</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conv.conversionRecords.slice(0, 50).map((rec, idx) => (
+                        <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="px-4 py-2 text-gray-700 text-xs whitespace-nowrap">{rec.admDate}</td>
+                          <td className="px-4 py-2 text-gray-900 text-xs font-medium">{rec.patientName}</td>
+                          <td className="px-4 py-2 text-gray-500 text-xs font-mono">{rec.casualtyEpisode}</td>
+                          <td className="px-4 py-2 text-violet-700 text-xs font-mono">{rec.inpatientEpisode}</td>
+                          <td className="px-4 py-2 text-gray-600 text-xs">{rec.specialty}</td>
+                          <td className="px-4 py-2 text-gray-600 text-xs">{rec.ward}</td>
+                          <td className="px-4 py-2 text-right text-gray-700 text-xs">{rec.los}</td>
+                          <td className="px-4 py-2 text-right text-gray-900 text-xs font-medium">{formatCurrency(rec.revenue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
