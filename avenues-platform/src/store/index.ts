@@ -169,20 +169,20 @@ export const useStore = create<StoreState>()(
           // ──────────────────────────────────────────────────────
           // HELPER: Add two 12-element monthly arrays element-wise
           // ──────────────────────────────────────────────────────
-          const addArrays = (a: number[], b: number[]): number[] =>
-            Array.from({ length: 12 }, (_, i) => (a[i] || 0) + (b[i] || 0));
+          const addArrays = (a: number[] | undefined, b: number[] | undefined): number[] =>
+            Array.from({ length: 12 }, (_, i) => ((a?.[i]) || 0) + ((b?.[i]) || 0));
 
           // Take element-wise max (dedup-safe for re-uploads of same file)
-          const maxArrays = (a: number[], b: number[]): number[] =>
-            Array.from({ length: 12 }, (_, i) => Math.max(a[i] || 0, b[i] || 0));
+          const maxArrays = (a: number[] | undefined, b: number[] | undefined): number[] =>
+            Array.from({ length: 12 }, (_, i) => Math.max((a?.[i]) || 0, (b?.[i]) || 0));
 
           // Merge Record<string, number> maps by incrementing counts
           const incrementCountMap = (
-            a: Record<string, number>,
-            b: Record<string, number>
+            a: Record<string, number> | undefined,
+            b: Record<string, number> | undefined
           ): Record<string, number> => {
-            const result = { ...a };
-            for (const [k, v] of Object.entries(b)) {
+            const result = { ...(a || {}) };
+            for (const [k, v] of Object.entries(b || {})) {
               result[k] = (result[k] || 0) + v;
             }
             return result;
@@ -190,11 +190,11 @@ export const useStore = create<StoreState>()(
 
           // Merge Record<string, {count, desc}> maps by incrementing counts
           const incrementCodeMap = (
-            a: Record<string, { count: number; desc: string }>,
-            b: Record<string, { count: number; desc: string }>
+            a: Record<string, { count: number; desc: string }> | undefined,
+            b: Record<string, { count: number; desc: string }> | undefined
           ): Record<string, { count: number; desc: string }> => {
-            const result = { ...a };
-            for (const [code, info] of Object.entries(b)) {
+            const result = { ...(a || {}) };
+            for (const [code, info] of Object.entries(b || {})) {
               if (result[code]) {
                 result[code] = {
                   count: result[code].count + info.count,
@@ -209,11 +209,11 @@ export const useStore = create<StoreState>()(
 
           // Merge Record<string, number[]> by adding arrays per key
           const mergeRecordArrays = (
-            a: Record<string, number[]>,
-            b: Record<string, number[]>
+            a: Record<string, number[]> | undefined,
+            b: Record<string, number[]> | undefined
           ): Record<string, number[]> => {
-            const result = { ...a };
-            for (const [k, bArr] of Object.entries(b)) {
+            const result = { ...(a || {}) };
+            for (const [k, bArr] of Object.entries(b || {})) {
               if (result[k]) {
                 result[k] = addArrays(result[k], bArr);
               } else {
@@ -289,19 +289,19 @@ export const useStore = create<StoreState>()(
               stockReceiptsDiscount: mergeRecordArrays(a.stockReceiptsDiscount, b.stockReceiptsDiscount),
               stockReceipts: mergeRecordArrays(a.stockReceipts, b.stockReceipts),
               stockReceiptsValue: mergeRecordArrays(a.stockReceiptsValue, b.stockReceiptsValue),
-              // Nested objects — additive
+              // Nested objects — additive (guard against undefined sub-objects)
               debtRecon: {
-                brought: addArrays(a.debtRecon.brought, b.debtRecon.brought),
-                revenue: addArrays(a.debtRecon.revenue, b.debtRecon.revenue),
-                payments: addArrays(a.debtRecon.payments, b.debtRecon.payments),
-                sundries: addArrays(a.debtRecon.sundries, b.debtRecon.sundries),
-                total: addArrays(a.debtRecon.total, b.debtRecon.total),
+                brought: addArrays(a.debtRecon?.brought, b.debtRecon?.brought),
+                revenue: addArrays(a.debtRecon?.revenue, b.debtRecon?.revenue),
+                payments: addArrays(a.debtRecon?.payments, b.debtRecon?.payments),
+                sundries: addArrays(a.debtRecon?.sundries, b.debtRecon?.sundries),
+                total: addArrays(a.debtRecon?.total, b.debtRecon?.total),
               },
               payments: {
-                deposits: addArrays(a.payments.deposits, b.payments.deposits),
-                individual: addArrays(a.payments.individual, b.payments.individual),
-                medAid: addArrays(a.payments.medAid, b.payments.medAid),
-                batched: addArrays(a.payments.batched, b.payments.batched),
+                deposits: addArrays(a.payments?.deposits, b.payments?.deposits),
+                individual: addArrays(a.payments?.individual, b.payments?.individual),
+                medAid: addArrays(a.payments?.medAid, b.payments?.medAid),
+                batched: addArrays(a.payments?.batched, b.payments?.batched),
               },
             };
           } else if (normalizedData.dashboard) {
