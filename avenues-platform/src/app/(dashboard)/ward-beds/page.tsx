@@ -133,7 +133,16 @@ export default function WardBedsPage() {
   const totalPatientDays = metrics.patDaysWard ? Object.values(metrics.patDaysWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0) : 0;
   const pctOccWardCount = metrics.pctOccWard ? Object.keys(metrics.pctOccWard).length : 0;
   const avgOccupancy = pctOccWardCount > 0
-    ? Object.values(metrics.pctOccWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0) / (pctOccWardCount * 12)
+    ? (() => {
+        let totalOcc = 0;
+        let totalActive = 0;
+        Object.values(metrics.pctOccWard).forEach(arr => {
+          arr.forEach(v => {
+            if (v > 0) { totalOcc += v; totalActive++; }
+          });
+        });
+        return totalActive > 0 ? totalOcc / totalActive : 0;
+      })()
     : 0;
 
   // Ward capacity vs occupied

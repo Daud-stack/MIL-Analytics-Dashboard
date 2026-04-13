@@ -135,7 +135,8 @@ export default function CasualtyPage() {
 
   // KPI calculations
   const totalCasualty = metrics.admCasualty.reduce((a, b) => a + b, 0);
-  const monthlyAvg = totalCasualty / 12;
+  const activeMonths = metrics.admCasualty.filter(v => v > 0).length || 1;
+  const monthlyAvg = totalCasualty / activeMonths;
   const casualtyArray = metrics.admCasualty;
   const rng = seededRandom(42);
   const transferRates = casualtyArray.map((v) => {

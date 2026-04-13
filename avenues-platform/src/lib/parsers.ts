@@ -594,6 +594,26 @@ export function parseDashboardCSV(csvText: string): YearData {
   metrics.monthRevenue = colZ('Billing Statistics-Total Revenue');
   metrics.revPerPatDay = colZ('Billing Statistics-Revenue Per Patient Day');
 
+  // Fallback: compute Revenue Per Patient Day from Total Revenue / Total Patient Days
+  const revPerPatDayAllZero = metrics.revPerPatDay.every(v => v === 0);
+  if (revPerPatDayAllZero && metrics.monthRevenue.some(v => v > 0)) {
+    // Sum all patient days across wards per month
+    const totalPatDaysPerMonth = z12();
+    for (const arr of Object.values(metrics.patDaysWard)) {
+      for (let i = 0; i < 12; i++) totalPatDaysPerMonth[i] += arr[i];
+    }
+    // If patDaysWard is empty, try billedPatDays
+    if (totalPatDaysPerMonth.every(v => v === 0)) {
+      for (const arr of Object.values(metrics.billedPatDays)) {
+        for (let i = 0; i < 12; i++) totalPatDaysPerMonth[i] += arr[i];
+      }
+    }
+    metrics.revPerPatDay = metrics.monthRevenue.map((rev, i) =>
+      totalPatDaysPerMonth[i] > 0 ? Math.round(rev / totalPatDaysPerMonth[i]) : 0
+    );
+    console.log('[Parser] Computed revPerPatDay as fallback from revenue/patientDays');
+  }
+
   // ── Revenue Per Stock Location ──
   for (const [key, vals] of Object.entries(metrics.rawColumns)) {
     if (key.startsWith('Revenue Per Stock Location-')) {
