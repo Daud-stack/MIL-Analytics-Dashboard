@@ -163,11 +163,18 @@ export default function PatientsPage() {
     }))
     .sort((a, b) => b.count - a.count);
 
-  // Medical aid distribution
-  const medAidData = Object.entries(locationData.medAids).map(([name, count]) => ({
-    name,
-    value: count,
-  }));
+  // Medical aid distribution — top 6 + "Other" to prevent label overcrowding
+  const medAidSorted = Object.entries(locationData.medAids)
+    .map(([name, count]) => ({ name, value: count }))
+    .filter(d => d.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const MED_AID_TOP_N = 6;
+  const medAidData = medAidSorted.length <= MED_AID_TOP_N + 1
+    ? medAidSorted
+    : [
+        ...medAidSorted.slice(0, MED_AID_TOP_N),
+        { name: 'Other', value: medAidSorted.slice(MED_AID_TOP_N).reduce((s, d) => s + d.value, 0) },
+      ];
 
   // LOS percentiles
   const sortedLOS = losValues.sort((a, b) => a - b);
@@ -334,26 +341,37 @@ export default function PatientsPage() {
             <p className="mt-1 text-xs text-gray-500">Patient episodes by medical aid scheme</p>
           </div>
           <div className="px-5 pb-5">
-            <ResponsiveContainer width="100%" height={320}>
-              <PieChart>
-                <Pie
-                  data={medAidData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  labelLine={false}
-                  label={({ name, value }) => `${(name || '').substring(0, 12)}: ${formatNumber(value)}`}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {medAidData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => formatNumber(value as number)} />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="flex items-center gap-4" style={{ minHeight: 320 }}>
+              {/* Doughnut chart — compact, no inline labels */}
+              <div className="flex-shrink-0" style={{ width: 200, height: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={medAidData} cx="50%" cy="50%" innerRadius={45} outerRadius={90}
+                      fill="#8884d8" dataKey="value" stroke="#fff" strokeWidth={2}>
+                      {medAidData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => formatNumber(value as number)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              {/* Legend list */}
+              <div className="flex-1 min-w-0 space-y-2">
+                {medAidData.map((entry, index) => {
+                  const total = medAidData.reduce((s, d) => s + d.value, 0);
+                  const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0';
+                  return (
+                    <div key={entry.name} className="flex items-center gap-2 text-xs">
+                      <span className="flex-shrink-0 h-3 w-3 rounded-sm" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                      <span className="truncate font-medium text-gray-700 min-w-0">{entry.name}</span>
+                      <span className="flex-shrink-0 ml-auto text-gray-500">{pct}%</span>
+                      <span className="flex-shrink-0 font-semibold text-gray-900 w-16 text-right">{formatNumber(entry.value)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
