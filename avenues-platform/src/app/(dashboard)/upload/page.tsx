@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, X, CheckCircle, AlertCircle, File, Zap, RefreshCw, Trash2, Clock, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAddYearData, useUploads, useRemoveUpload, useCurrentYear, useDatasetList, useAddDataset, useRemoveDataset, useIsFileProcessed, useMarkFileProcessed } from '@/store';
+import { useStore, useAddYearData, useUploads, useRemoveUpload, useCurrentYear, useDatasetList, useAddDataset, useRemoveDataset, useIsFileProcessed, useMarkFileProcessed, useYears } from '@/store';
 import { YearData, UploadRecord, UploadCategory, GenericDataset } from '@/types';
 import { parseDashboardCSV, parseLocationCSV, parseClaimsCSV, detectYear, detectFacilityName } from '@/lib/parsers';
 import { parseGenericCSV } from '@/lib/generic-parser';
@@ -278,6 +278,7 @@ export default function UploadPage() {
   const [processing, setProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addYearData = useAddYearData();
+  const years = useYears();
   const existingUploads = useUploads();
   const existingDatasets = useDatasetList();
   const removeUpload = useRemoveUpload();
@@ -518,13 +519,46 @@ export default function UploadPage() {
         }
       });
 
+      // ── Flush to DB immediately before navigating ──
+      // useDbSync uses a 2s debounce, but we navigate after 100ms,
+      // so the cleanup function cancels the pending write. Push directly.
+      const updatedYears = useStore.getState().years;
+      const dbPushPromises: Promise<void>[] = [];
+      const pushedYears = new Set<number>();
+      sorted.forEach(upload => {
+        if (upload.isDuplicate || !upload.parsedData) return;
+        if (pushedYears.has(upload.year)) return;
+        pushedYears.add(upload.year);
+      });
+      // Push all affected years from the store (merged state)
+      for (const yr of pushedYears) {
+        const yearData = updatedYears.get(yr);
+        if (!yearData) continue;
+        dbPushPromises.push(
+          fetch('/api/data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              year: yr,
+              dashboard: yearData.dashboard || yearData.dash || null,
+              location: yearData.location || yearData.loc || null,
+              claims: yearData.claims || yearData.apac || null,
+              datasets: yearData.datasets || {},
+              uploads: yearData.uploads || [],
+            }),
+          }).then(res => {
+            if (!res.ok) console.error('[Upload] DB push failed for year', yr, res.status);
+            else console.log('[Upload] DB push succeeded for year', yr);
+          }).catch(err => console.error('[Upload] DB push error for year', yr, err))
+        );
+      }
+      await Promise.all(dbPushPromises);
+      console.log('[Upload] All DB pushes complete, navigating to dashboard');
+
       setUploads([]);
       setProcessing(false);
 
-      // Use setTimeout to ensure state updates are flushed before navigation
-      setTimeout(() => {
-        router.push('/dashboard');
-      }, 100);
+      router.push('/dashboard');
     } catch (error) {
       console.error('[Upload] Error processing files:', error);
       setProcessing(false);

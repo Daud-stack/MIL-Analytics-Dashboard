@@ -165,11 +165,17 @@ export function useDbSync() {
   }, [isAuthenticated]);
 
   // ─── Debounced write-back on store changes ────────────────
+  // Ref to hold pending flush data so cleanup can fire it immediately
+  const pendingFlush = useRef<{ snapshot: string; years: Map<number, YearData> } | null>(null);
+
   useEffect(() => {
     if (!isAuthenticated || isSyncing.current) return;
 
     const currentSnapshot = serializeYearsForComparison(store.years);
     if (currentSnapshot === prevYearsRef.current) return;
+
+    // Track the pending data for flush-on-unmount
+    pendingFlush.current = { snapshot: currentSnapshot, years: new Map(store.years) };
 
     // Something changed — debounce the DB write
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
@@ -177,6 +183,7 @@ export function useDbSync() {
     debounceTimer.current = setTimeout(async () => {
       isSyncing.current = true;
       prevYearsRef.current = currentSnapshot;
+      pendingFlush.current = null;
 
       // Push all years to DB
       const promises: Promise<void>[] = [];
@@ -190,7 +197,20 @@ export function useDbSync() {
     }, SYNC_DEBOUNCE_MS);
 
     return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      // On unmount/re-render: flush pending writes immediately instead of canceling
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+      if (pendingFlush.current) {
+        const { snapshot, years: pendingYears } = pendingFlush.current;
+        pendingFlush.current = null;
+        prevYearsRef.current = snapshot;
+        console.log('[DbSync] Flushing', pendingYears.size, 'year(s) to DB on cleanup');
+        pendingYears.forEach((data, year) => {
+          pushYearToDb(year, data); // fire-and-forget
+        });
+      }
     };
   }, [isAuthenticated, store.years, pushYearToDb]);
 
