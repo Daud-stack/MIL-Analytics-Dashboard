@@ -10,7 +10,8 @@ export default auth((req) => {
   const isPublicApi =
     req.nextUrl.pathname.startsWith("/api/health") ||
     req.nextUrl.pathname.startsWith("/api/data/ingest") ||
-    req.nextUrl.pathname.startsWith("/api/admin/orgs");
+    req.nextUrl.pathname.startsWith("/api/admin/orgs") ||
+    req.nextUrl.pathname.startsWith("/api/admin/reset");
 
   // Always allow auth endpoints
   if (isApiAuth || isPublicApi) {
