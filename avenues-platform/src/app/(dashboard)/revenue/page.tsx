@@ -97,10 +97,18 @@ export default function RevenuePage() {
   }));
 
   // Revenue by location — aggregate per-location drill-downs
-  const revLocationData = Array.from(revLocationDrill.entries())
-    .map(([name, dd]) => ({ name: name.substring(0, 15), value: dd.total }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8);
+  const revLocationSorted = Array.from(revLocationDrill.entries())
+    .map(([name, dd]) => ({ name, value: dd.total }))
+    .filter(d => d.value > 0)
+    .sort((a, b) => b.value - a.value);
+  // Top 6 + "Other" bucket to prevent label overcrowding
+  const TOP_N = 6;
+  const revLocationData = revLocationSorted.length <= TOP_N + 1
+    ? revLocationSorted
+    : [
+        ...revLocationSorted.slice(0, TOP_N),
+        { name: 'Other', value: revLocationSorted.slice(TOP_N).reduce((s, d) => s + d.value, 0) },
+      ];
 
   // KPIs
   const totalRevenue = revenue.total;
@@ -193,18 +201,37 @@ export default function RevenuePage() {
             <p className="mt-1 text-xs text-gray-500">Geographic revenue distribution</p>
           </div>
           <div className="px-5 pb-5">
-            <ResponsiveContainer width="100%" height={320}>
-              <PieChart>
-                <Pie data={revLocationData} cx="50%" cy="50%" innerRadius={60} outerRadius={110} labelLine={false}
-                  label={({ name, value }) => `${name}: ${formatCurrency(Number(value ?? 0)).slice(0, 10)}`}
-                  fill="#8884d8" dataKey="value">
-                  {revLocationData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => formatCurrency(value as number)} />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="flex items-center gap-4" style={{ minHeight: 320 }}>
+              {/* Doughnut chart — compact, no labels */}
+              <div className="flex-shrink-0" style={{ width: 200, height: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={revLocationData} cx="50%" cy="50%" innerRadius={45} outerRadius={90}
+                      fill="#8884d8" dataKey="value" stroke="#fff" strokeWidth={2}>
+                      {revLocationData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              {/* Legend list — clean, readable */}
+              <div className="flex-1 min-w-0 space-y-2">
+                {revLocationData.map((entry, index) => {
+                  const total = revLocationData.reduce((s, d) => s + d.value, 0);
+                  const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0';
+                  return (
+                    <div key={entry.name} className="flex items-center gap-2 text-xs">
+                      <span className="flex-shrink-0 h-3 w-3 rounded-sm" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                      <span className="truncate font-medium text-gray-700 min-w-0">{entry.name}</span>
+                      <span className="flex-shrink-0 ml-auto text-gray-500">{pct}%</span>
+                      <span className="flex-shrink-0 font-semibold text-gray-900 w-24 text-right">{formatCurrency(entry.value)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
