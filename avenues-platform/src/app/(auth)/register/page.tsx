@@ -240,7 +240,7 @@ export default function RegisterPage() {
             <p className="text-xs text-rose-400">{validationErrors.password}</p>
           )}
           <p className="text-xs text-slate-400">
-            Minimum 8 characters, mix of uppercase and lowercase letters
+            Minimum 8 characters
           </p>
         </div>
 

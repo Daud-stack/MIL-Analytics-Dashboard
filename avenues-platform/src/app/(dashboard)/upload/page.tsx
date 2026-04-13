@@ -209,7 +209,7 @@ function detectAndParse(csvText: string, manualYear: number | null): {
       console.log('[Upload] Fallback: Dashboard parser succeeded. Revenue:', dashResult.dashboard.totalRevenue);
       return { type: 'Dashboard', facilityName, year, parsedData: dashResult, rowCount: lines.length - 3, columnScore: 75, debugInfo: `Fallback Dashboard: ${facilityName}` };
     }
-  } catch {}
+  } catch (e) { console.warn('[Upload] Dashboard fallback parse failed:', e); }
 
   // Try Location parser
   try {
@@ -220,7 +220,7 @@ function detectAndParse(csvText: string, manualYear: number | null): {
       console.log('[Upload] Fallback: Location parser succeeded. Episodes:', locResult.location.episodes);
       return { type: 'Location', facilityName: 'Avenues Clinic', year, parsedData: locResult, rowCount: lines.length - 1, columnScore: 75, debugInfo: `Fallback Location: ${locResult.location.episodes} episodes` };
     }
-  } catch {}
+  } catch (e) { console.warn('[Upload] Location fallback parse failed:', e); }
 
   // Try Claims parser
   try {
@@ -230,7 +230,7 @@ function detectAndParse(csvText: string, manualYear: number | null): {
       console.log('[Upload] Fallback: Claims parser succeeded. Claims:', claimsResult.claims.totalClaims);
       return { type: 'Claims', facilityName: 'Avenues Clinic', year, parsedData: claimsResult, rowCount: lines.length - 1, columnScore: 75, debugInfo: `Fallback Claims: ${claimsResult.claims.totalClaims} records` };
     }
-  } catch {}
+  } catch (e) { console.warn('[Upload] Claims fallback parse failed:', e); }
 
   // ====== STRATEGY 5: Generic CSV — auto-profile any CSV with columns ======
   // If we have at least a header row and some data, ingest as a generic dataset

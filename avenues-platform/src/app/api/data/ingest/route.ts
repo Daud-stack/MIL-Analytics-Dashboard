@@ -151,11 +151,13 @@ export async function POST(request: NextRequest) {
         orgId,
         ...updateData,
         processedHashes: [...currentHashes, sha256],
+        // Prisma JSON fields require 'as any' cast for array spread operations
         uploads: [...currentUploads, uploadRecord] as any,
       },
       update: {
         ...updateData,
         processedHashes: [...currentHashes, sha256],
+        // Prisma JSON fields require 'as any' cast for array spread operations
         uploads: [...currentUploads, uploadRecord] as any,
         updatedAt: new Date(),
       },

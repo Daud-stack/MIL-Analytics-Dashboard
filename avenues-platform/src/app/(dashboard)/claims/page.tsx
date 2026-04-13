@@ -154,7 +154,8 @@ export default function ClaimsPage() {
   const totalRejected = rejectedDrill.total;
   const approvalRate = totalClaims > 0 ? (totalApproved / totalClaims) * 100 : 0;
   const rejectionRate = totalClaims > 0 ? (totalRejected / totalClaims) * 100 : 0;
-  const avgProcessingDays = 10; // Typical healthcare claim
+  // TODO: Calculate from actual claims data when processing dates are available
+  const avgProcessingDays = 10;
 
   const handleExportClaims = () => {
     const exportData = [

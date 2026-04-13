@@ -355,14 +355,14 @@ export default function DashboardPage() {
   const totalPayments = depositsDrill.total + individualDrill.total + medAidDrill.total + batchedDrill.total;
 
   const handleExport = () => {
-    // Export raw columns as CSV using drill data
     const rows: Record<string, string>[] = [];
     const colNames = Object.keys(dashData.rawColumns || {});
-    revenueDrill.labels.forEach((label, idx) => {
-      const row: Record<string, string> = { Period: label };
+    revenueDrill.points.forEach((pt) => {
+      const row: Record<string, string> = { Period: pt.label };
       colNames.forEach(col => {
-        const drillCol = useDrillDown(dashData.rawColumns?.[col]);
-        row[col] = String(drillCol.values?.[idx] ?? 0);
+        const monthlyArr = dashData.rawColumns?.[col] || [];
+        const sum = pt.monthIndices.reduce((acc, mi) => acc + (monthlyArr[mi] || 0), 0);
+        row[col] = String(sum);
       });
       rows.push(row);
     });
