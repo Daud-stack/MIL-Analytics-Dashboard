@@ -929,7 +929,24 @@ export const useStore = create<StoreState>()(
             if (stateToSave.years instanceof Map) {
               stateToSave.years = Array.from(
                 (stateToSave.years as Map<number, YearData>).entries()
-              ).map(([yr, data]) => [yr, { ...data }]);
+              ).map(([yr, data]) => {
+                // Strip heavy rawRows from location/claims to avoid QuotaExceededError
+                const slimData = { ...data };
+                if (slimData.location) {
+                  slimData.location = { ...slimData.location, rawRows: [] };
+                }
+                if (slimData.claims) {
+                  slimData.claims = { ...slimData.claims, rawRows: [] };
+                }
+                // Strip heavy conversionRecords array
+                if (slimData.location?.conversions) {
+                  slimData.location = {
+                    ...slimData.location,
+                    conversions: { ...slimData.location.conversions, conversionRecords: [] },
+                  };
+                }
+                return [yr, slimData];
+              });
             } else {
               // partialize stripped years out — just skip it
               delete stateToSave.years;

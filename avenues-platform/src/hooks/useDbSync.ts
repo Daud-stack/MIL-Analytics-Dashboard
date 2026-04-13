@@ -143,11 +143,12 @@ export function useDbSync() {
       if (cancelled) return;
 
       if (dbData && dbData.size > 0) {
-        // Replace Zustand store with DB data
+        // Replace Zustand store with DB data — clear first to avoid additive duplication
         dbData.forEach((yearData, year) => {
+          store.removeYear(year);
           store.addYearData(year, yearData);
         });
-        console.log('[DbSync] Loaded', dbData.size, 'year(s) from DB');
+        console.log('[DbSync] Loaded', dbData.size, 'year(s) from DB (replaced)');
       }
 
       // Snapshot current state for change detection
@@ -207,6 +208,7 @@ export function useDbSync() {
       if (dbData && dbData.size > 0) {
         isSyncing.current = true;
         dbData.forEach((yearData, year) => {
+          store.removeYear(year);
           store.addYearData(year, yearData);
         });
         prevYearsRef.current = serializeYearsForComparison(store.years);

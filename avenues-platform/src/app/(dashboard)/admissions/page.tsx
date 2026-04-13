@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Download, AlertCircle, BedDouble, Activity, ArrowRightLeft, Users, Building2, ClipboardList } from 'lucide-react';
 import {
   LineChart,
@@ -75,6 +75,29 @@ export default function AdmissionsPage() {
   const convRevDrill = useDrillDown(conv?.monthlyConversionRevenue);
   const convDirALOSDrill = useDrillDown(conv?.monthlyDirectALOS);
   const convDirRevDrill = useDrillDown(conv?.monthlyDirectRevenue);
+
+  // Safe conversion metrics with defaults for fields missing from older DB data
+  const safeConv = useMemo(() => {
+    if (!conv) return null;
+    return {
+      ...conv,
+      totalCasualty: conv.totalCasualty ?? 0,
+      totalConversions: conv.totalConversions ?? 0,
+      totalInpatient: conv.totalInpatient ?? 0,
+      overallConversionRate: conv.overallConversionRate ?? 0,
+      avgConversionLOS: conv.avgConversionLOS ?? 0,
+      avgConversionRevenue: conv.avgConversionRevenue ?? 0,
+      avgDirectLOS: conv.avgDirectLOS ?? 0,
+      avgDirectRevenue: conv.avgDirectRevenue ?? 0,
+      conversionsBySpecialty: conv.conversionsBySpecialty ?? {},
+      conversionsByICD: conv.conversionsByICD ?? {},
+      conversionsByWard: conv.conversionsByWard ?? {},
+      conversionsByMedAid: conv.conversionsByMedAid ?? {},
+      conversionsByAge: conv.conversionsByAge ?? {},
+      conversionsByGender: conv.conversionsByGender ?? {},
+      conversionRecords: conv.conversionRecords ?? [],
+    };
+  }, [conv]);
 
   // ── Record-based drill-downs ──
   const admPerWardDrill = useDrillDownRecord(dashData?.admPerWard);
@@ -749,7 +772,7 @@ export default function AdmissionsPage() {
       {/* ═══════════════════════ CONVERSIONS TAB ═══════════════════════ */}
       {activeTab === 'conversions' && (
         <>
-          {!conv ? (
+          {!safeConv ? (
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-12">
               <div className="flex flex-col items-center justify-center gap-4">
                 <ArrowRightLeft className="h-12 w-12 text-gray-400" />
@@ -764,19 +787,19 @@ export default function AdmissionsPage() {
             <>
               {/* Conversion KPIs - Primary */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                <StatCard title="Casualty Visits (LOC)" value={formatNumber(conv.totalCasualty)} trend="neutral" color="blue" />
-                <StatCard title="Conversions (C→A)" value={formatNumber(conv.totalConversions)} trend="neutral" color="violet" />
-                <StatCard title="Conversion Rate" value={`${conv.overallConversionRate.toFixed(1)}%`} trend="neutral" color="teal" />
-                <StatCard title="ALOS (Converted)" value={`${conv.avgConversionLOS.toFixed(1)} days`} trend="neutral" color="emerald" />
-                <StatCard title="Avg Rev (Converted)" value={formatCurrency(conv.avgConversionRevenue)} trend="neutral" color="amber" />
+                <StatCard title="Casualty Visits (LOC)" value={formatNumber(safeConv.totalCasualty ?? 0)} trend="neutral" color="blue" />
+                <StatCard title="Conversions (C→A)" value={formatNumber(safeConv.totalConversions ?? 0)} trend="neutral" color="violet" />
+                <StatCard title="Conversion Rate" value={`${(safeConv.overallConversionRate ?? 0).toFixed(1)}%`} trend="neutral" color="teal" />
+                <StatCard title="ALOS (Converted)" value={`${(safeConv.avgConversionLOS ?? 0).toFixed(1)} days`} trend="neutral" color="emerald" />
+                <StatCard title="Avg Rev (Converted)" value={formatCurrency(safeConv.avgConversionRevenue ?? 0)} trend="neutral" color="amber" />
               </div>
 
               {/* Conversion KPIs - Comparison */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard title="Inpatient Episodes (LOC)" value={formatNumber(conv.totalInpatient)} trend="neutral" color="slate" />
-                <StatCard title="Direct Admissions" value={formatNumber(conv.totalInpatient - conv.totalConversions)} trend="neutral" color="cyan" />
-                <StatCard title="ALOS (Direct Admit)" value={`${conv.avgDirectLOS.toFixed(1)} days`} trend="neutral" color="green" />
-                <StatCard title="Avg Rev (Direct Admit)" value={formatCurrency(conv.avgDirectRevenue)} trend="neutral" color="orange" />
+                <StatCard title="Inpatient Episodes (LOC)" value={formatNumber(safeConv.totalInpatient ?? 0)} trend="neutral" color="slate" />
+                <StatCard title="Direct Admissions" value={formatNumber((safeConv.totalInpatient ?? 0) - (safeConv.totalConversions ?? 0))} trend="neutral" color="cyan" />
+                <StatCard title="ALOS (Direct Admit)" value={`${(safeConv.avgDirectLOS ?? 0).toFixed(1)} days`} trend="neutral" color="green" />
+                <StatCard title="Avg Rev (Direct Admit)" value={formatCurrency(safeConv.avgDirectRevenue ?? 0)} trend="neutral" color="orange" />
               </div>
 
               {/* AHRQ Standard Note */}
@@ -847,7 +870,7 @@ export default function AdmissionsPage() {
                   </div>
                   <div className="px-5 pb-5">
                     {(() => {
-                      const specData = Object.entries(conv.conversionsBySpecialty)
+                      const specData = Object.entries(safeConv.conversionsBySpecialty)
                         .sort((a, b) => b[1] - a[1])
                         .slice(0, 10)
                         .map(([name, count]) => ({ name: name.length > 25 ? name.substring(0, 25) + '...' : name, count, fullName: name }));
@@ -887,7 +910,7 @@ export default function AdmissionsPage() {
                     <ResponsiveContainer width="100%" height={320}>
                       <PieChart>
                         <Pie
-                          data={Object.entries(conv.conversionsByWard)
+                          data={Object.entries(safeConv.conversionsByWard)
                             .sort((a, b) => b[1] - a[1])
                             .map(([name, value]) => ({ name, value }))}
                           cx="50%"
@@ -899,7 +922,7 @@ export default function AdmissionsPage() {
                           fill="#8884d8"
                           dataKey="value"
                         >
-                          {Object.entries(conv.conversionsByWard).sort((a, b) => b[1] - a[1]).map((_, idx) => (
+                          {Object.entries(safeConv.conversionsByWard).sort((a, b) => b[1] - a[1]).map((_, idx) => (
                             <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
                           ))}
                         </Pie>
@@ -921,7 +944,7 @@ export default function AdmissionsPage() {
                     <ResponsiveContainer width="100%" height={280}>
                       <BarChart data={['0-17', '18-29', '30-44', '45-59', '60-74', '75+'].map(ag => ({
                         ageGroup: ag,
-                        count: conv.conversionsByAge[ag] || 0,
+                        count: safeConv.conversionsByAge[ag] || 0,
                       }))}>
                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
                         <XAxis dataKey="ageGroup" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
@@ -940,7 +963,7 @@ export default function AdmissionsPage() {
                   </div>
                   <div className="px-5 pb-5">
                     {(() => {
-                      const maData = Object.entries(conv.conversionsByMedAid)
+                      const maData = Object.entries(safeConv.conversionsByMedAid)
                         .sort((a, b) => b[1] - a[1])
                         .slice(0, 8)
                         .map(([name, count]) => ({ name: name.length > 20 ? name.substring(0, 20) + '...' : name, count, fullName: name }));
@@ -1059,14 +1082,14 @@ export default function AdmissionsPage() {
                       ))}
                       <tr className="bg-gray-50 font-semibold">
                         <td className="px-4 py-3 text-gray-900 text-xs">Total / Avg</td>
-                        <td className="px-3 py-3 text-right text-gray-900 text-xs">{formatNumber(conv.totalCasualty)}</td>
-                        <td className="px-3 py-3 text-right text-gray-700 text-xs">{formatNumber(conv.totalInpatient)}</td>
-                        <td className="px-3 py-3 text-right text-violet-900 text-xs">{formatNumber(conv.totalConversions)}</td>
-                        <td className="px-3 py-3 text-right text-teal-700 text-xs">{conv.overallConversionRate.toFixed(1)}%</td>
-                        <td className="px-3 py-3 text-right text-gray-900 text-xs">{conv.avgConversionLOS.toFixed(1)}</td>
-                        <td className="px-3 py-3 text-right text-gray-600 text-xs">{conv.avgDirectLOS.toFixed(1)}</td>
-                        <td className="px-3 py-3 text-right text-gray-900 text-xs">{formatCurrency(conv.avgConversionRevenue)}</td>
-                        <td className="px-3 py-3 text-right text-gray-600 text-xs">{formatCurrency(conv.avgDirectRevenue)}</td>
+                        <td className="px-3 py-3 text-right text-gray-900 text-xs">{formatNumber(safeConv.totalCasualty)}</td>
+                        <td className="px-3 py-3 text-right text-gray-700 text-xs">{formatNumber(safeConv.totalInpatient)}</td>
+                        <td className="px-3 py-3 text-right text-violet-900 text-xs">{formatNumber(safeConv.totalConversions)}</td>
+                        <td className="px-3 py-3 text-right text-teal-700 text-xs">{(safeConv.overallConversionRate ?? 0).toFixed(1)}%</td>
+                        <td className="px-3 py-3 text-right text-gray-900 text-xs">{(safeConv.avgConversionLOS ?? 0).toFixed(1)}</td>
+                        <td className="px-3 py-3 text-right text-gray-600 text-xs">{(safeConv.avgDirectLOS ?? 0).toFixed(1)}</td>
+                        <td className="px-3 py-3 text-right text-gray-900 text-xs">{formatCurrency(safeConv.avgConversionRevenue)}</td>
+                        <td className="px-3 py-3 text-right text-gray-600 text-xs">{formatCurrency(safeConv.avgDirectRevenue)}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1090,7 +1113,7 @@ export default function AdmissionsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.entries(conv.conversionsByICD)
+                      {Object.entries(safeConv.conversionsByICD)
                         .sort((a, b) => b[1].count - a[1].count)
                         .slice(0, 15)
                         .map(([code, { count, desc }], idx) => (
@@ -1112,7 +1135,7 @@ export default function AdmissionsPage() {
               <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
                 <div className="border-b border-gray-200 px-5 py-4">
                   <h2 className="text-sm font-semibold text-gray-900">Conversion Records</h2>
-                  <p className="mt-1 text-xs text-gray-500">Top {Math.min(50, conv.conversionRecords.length)} converted patients by revenue</p>
+                  <p className="mt-1 text-xs text-gray-500">Top {Math.min(50, safeConv.conversionRecords.length)} converted patients by revenue</p>
                 </div>
                 <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                   <table className="w-full text-sm">
@@ -1130,7 +1153,7 @@ export default function AdmissionsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {conv.conversionRecords.slice(0, 50).map((rec, idx) => (
+                      {safeConv.conversionRecords.slice(0, 50).map((rec, idx) => (
                         <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
                           <td className="px-4 py-2 text-gray-700 text-xs whitespace-nowrap">{rec.admDate}</td>
                           <td className="px-4 py-2 text-gray-900 text-xs font-medium">{rec.patientName}</td>
