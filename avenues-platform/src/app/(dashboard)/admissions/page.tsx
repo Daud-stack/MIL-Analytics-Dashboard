@@ -73,6 +73,8 @@ export default function AdmissionsPage() {
   const convRateDrill = useDrillDown(conv?.monthlyConversionRate);
   const convALOSDrill = useDrillDown(conv?.monthlyConversionALOS);
   const convRevDrill = useDrillDown(conv?.monthlyConversionRevenue);
+  const convDirALOSDrill = useDrillDown(conv?.monthlyDirectALOS);
+  const convDirRevDrill = useDrillDown(conv?.monthlyDirectRevenue);
 
   // ── Record-based drill-downs ──
   const admPerWardDrill = useDrillDownRecord(dashData?.admPerWard);
@@ -760,29 +762,29 @@ export default function AdmissionsPage() {
             </div>
           ) : (
             <>
-              {/* Conversion KPIs */}
+              {/* Conversion KPIs - Primary */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                <StatCard title="Casualty Visits" value={formatNumber(convCasualtyDrill.total)} trend="neutral" color="blue" />
-                <StatCard title="Conversions" value={formatNumber(convConversionsDrill.total)} trend="neutral" color="violet" />
-                <StatCard
-                  title="Conversion Rate"
-                  value={`${convCasualtyDrill.total > 0 ? ((convConversionsDrill.total / convCasualtyDrill.total) * 100).toFixed(1) : 0}%`}
-                  trend="neutral" color="teal"
-                />
-                <StatCard
-                  title="Avg LOS (Converted)"
-                  value={`${convConversionsDrill.total > 0 ? (conv.monthlyConversionALOS.reduce((a, b) => a + b, 0) / conv.monthlyConversionALOS.filter(v => v > 0).length || 0).toFixed(1) : '—'} days`}
-                  trend="neutral" color="emerald"
-                />
-                <StatCard
-                  title="Avg Revenue (Converted)"
-                  value={formatCurrency(
-                    convConversionsDrill.total > 0
-                      ? conv.conversionRecords.reduce((s, r) => s + r.revenue, 0) / conv.conversionRecords.length
-                      : 0
-                  )}
-                  trend="neutral" color="amber"
-                />
+                <StatCard title="Casualty Visits (LOC)" value={formatNumber(conv.totalCasualty)} trend="neutral" color="blue" />
+                <StatCard title="Conversions (C→A)" value={formatNumber(conv.totalConversions)} trend="neutral" color="violet" />
+                <StatCard title="Conversion Rate" value={`${conv.overallConversionRate.toFixed(1)}%`} trend="neutral" color="teal" />
+                <StatCard title="ALOS (Converted)" value={`${conv.avgConversionLOS.toFixed(1)} days`} trend="neutral" color="emerald" />
+                <StatCard title="Avg Rev (Converted)" value={formatCurrency(conv.avgConversionRevenue)} trend="neutral" color="amber" />
+              </div>
+
+              {/* Conversion KPIs - Comparison */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard title="Inpatient Episodes (LOC)" value={formatNumber(conv.totalInpatient)} trend="neutral" color="slate" />
+                <StatCard title="Direct Admissions" value={formatNumber(conv.totalInpatient - conv.totalConversions)} trend="neutral" color="cyan" />
+                <StatCard title="ALOS (Direct Admit)" value={`${conv.avgDirectLOS.toFixed(1)} days`} trend="neutral" color="green" />
+                <StatCard title="Avg Rev (Direct Admit)" value={formatCurrency(conv.avgDirectRevenue)} trend="neutral" color="orange" />
+              </div>
+
+              {/* AHRQ Standard Note */}
+              <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-4 py-2.5">
+                <AlertCircle className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                <p className="text-xs text-blue-700">
+                  Conversions defined per AHRQ standard: Casualty (C) episodes followed by Inpatient (A) admission within 48 hours for the same patient. Source: LOC episode-level data.
+                </p>
               </div>
 
               {/* Conversion Charts Row 1 */}
@@ -969,6 +971,57 @@ export default function AdmissionsPage() {
                 </div>
               </div>
 
+              {/* ALOS Comparison: Converted vs Direct */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-200 px-5 py-4">
+                    <h2 className="text-sm font-semibold text-gray-900">{periodLabel} ALOS: Converted vs Direct Admissions</h2>
+                    <p className="mt-1 text-xs text-gray-500">Length of stay comparison</p>
+                  </div>
+                  <div className="px-5 pb-5">
+                    <ResponsiveContainer width="100%" height={320}>
+                      <BarChart data={convALOSDrill.labels.map((label, i) => ({
+                        period: label,
+                        converted: convALOSDrill.values[i],
+                        direct: convDirALOSDrill.values[i],
+                      }))}>
+                        <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                        <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} interval={granularity === 'day' ? 29 : granularity === 'week' ? 3 : 0} />
+                        <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} unit=" d" />
+                        <Tooltip formatter={(value) => `${(value as number).toFixed(1)} days`} />
+                        <Legend />
+                        <Bar dataKey="converted" fill="#7c3aed" name="Converted ALOS" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="direct" fill="#94a3b8" name="Direct ALOS" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-200 px-5 py-4">
+                    <h2 className="text-sm font-semibold text-gray-900">{periodLabel} Revenue: Converted vs Direct</h2>
+                    <p className="mt-1 text-xs text-gray-500">Average revenue per episode comparison</p>
+                  </div>
+                  <div className="px-5 pb-5">
+                    <ResponsiveContainer width="100%" height={320}>
+                      <BarChart data={convRevDrill.labels.map((label, i) => ({
+                        period: label,
+                        converted: convRevDrill.values[i],
+                        direct: convDirRevDrill.values[i],
+                      }))}>
+                        <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+                        <XAxis dataKey="period" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} interval={granularity === 'day' ? 29 : granularity === 'week' ? 3 : 0} />
+                        <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                        <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                        <Legend />
+                        <Bar dataKey="converted" fill="#d97706" name="Converted Avg Rev" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="direct" fill="#94a3b8" name="Direct Avg Rev" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
               {/* Period Detail Table */}
               <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
                 <div className="border-b border-gray-200 px-5 py-4">
@@ -979,45 +1032,41 @@ export default function AdmissionsPage() {
                   <table className="w-full text-sm">
                     <thead className="border-b border-gray-200 bg-gray-50">
                       <tr>
-                        <th className="px-5 py-3 text-left font-semibold text-gray-900">Period</th>
-                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Casualty</th>
-                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Inpatient</th>
-                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Conversions</th>
-                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Rate %</th>
-                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Avg LOS</th>
-                        <th className="px-5 py-3 text-right font-semibold text-gray-900">Avg Revenue</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-900 text-xs">Period</th>
+                        <th className="px-3 py-3 text-right font-semibold text-gray-900 text-xs">Casualty</th>
+                        <th className="px-3 py-3 text-right font-semibold text-gray-900 text-xs">Inpatient</th>
+                        <th className="px-3 py-3 text-right font-semibold text-violet-800 text-xs">Conv.</th>
+                        <th className="px-3 py-3 text-right font-semibold text-teal-800 text-xs">Rate %</th>
+                        <th className="px-3 py-3 text-right font-semibold text-gray-900 text-xs">Conv ALOS</th>
+                        <th className="px-3 py-3 text-right font-semibold text-gray-900 text-xs">Direct ALOS</th>
+                        <th className="px-3 py-3 text-right font-semibold text-gray-900 text-xs">Conv Rev</th>
+                        <th className="px-3 py-3 text-right font-semibold text-gray-900 text-xs">Direct Rev</th>
                       </tr>
                     </thead>
                     <tbody>
                       {convCasualtyDrill.points.map((pt, idx) => (
                         <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="px-5 py-3 text-gray-900">{pt.label}</td>
-                          <td className="px-5 py-3 text-right text-gray-700">{formatNumber(convCasualtyDrill.values[idx])}</td>
-                          <td className="px-5 py-3 text-right text-gray-600">{formatNumber(convInpatientDrill.values[idx])}</td>
-                          <td className="px-5 py-3 text-right text-violet-700 font-medium">{formatNumber(convConversionsDrill.values[idx])}</td>
-                          <td className="px-5 py-3 text-right text-teal-700">{convRateDrill.values[idx].toFixed(1)}%</td>
-                          <td className="px-5 py-3 text-right text-gray-600">{convALOSDrill.values[idx] > 0 ? convALOSDrill.values[idx].toFixed(1) : '—'}</td>
-                          <td className="px-5 py-3 text-right text-gray-600">{convRevDrill.values[idx] > 0 ? formatCurrency(convRevDrill.values[idx]) : '—'}</td>
+                          <td className="px-4 py-2.5 text-gray-900 text-xs">{pt.label}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-700 text-xs">{formatNumber(convCasualtyDrill.values[idx])}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-600 text-xs">{formatNumber(convInpatientDrill.values[idx])}</td>
+                          <td className="px-3 py-2.5 text-right text-violet-700 font-medium text-xs">{formatNumber(convConversionsDrill.values[idx])}</td>
+                          <td className="px-3 py-2.5 text-right text-teal-700 text-xs">{convRateDrill.values[idx].toFixed(1)}%</td>
+                          <td className="px-3 py-2.5 text-right text-gray-700 text-xs">{convALOSDrill.values[idx] > 0 ? convALOSDrill.values[idx].toFixed(1) : '—'}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{convDirALOSDrill.values[idx] > 0 ? convDirALOSDrill.values[idx].toFixed(1) : '—'}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-700 text-xs">{convRevDrill.values[idx] > 0 ? formatCurrency(convRevDrill.values[idx]) : '—'}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{convDirRevDrill.values[idx] > 0 ? formatCurrency(convDirRevDrill.values[idx]) : '—'}</td>
                         </tr>
                       ))}
                       <tr className="bg-gray-50 font-semibold">
-                        <td className="px-5 py-3 text-gray-900">Total</td>
-                        <td className="px-5 py-3 text-right text-gray-900">{formatNumber(convCasualtyDrill.total)}</td>
-                        <td className="px-5 py-3 text-right text-gray-700">{formatNumber(convInpatientDrill.total)}</td>
-                        <td className="px-5 py-3 text-right text-violet-900">{formatNumber(convConversionsDrill.total)}</td>
-                        <td className="px-5 py-3 text-right text-teal-700">
-                          {convCasualtyDrill.total > 0 ? ((convConversionsDrill.total / convCasualtyDrill.total) * 100).toFixed(1) : '0'}%
-                        </td>
-                        <td className="px-5 py-3 text-right text-gray-700">
-                          {convConversionsDrill.total > 0
-                            ? (conv.conversionRecords.reduce((s, r) => s + r.los, 0) / conv.conversionRecords.length).toFixed(1)
-                            : '—'}
-                        </td>
-                        <td className="px-5 py-3 text-right text-gray-700">
-                          {convConversionsDrill.total > 0
-                            ? formatCurrency(conv.conversionRecords.reduce((s, r) => s + r.revenue, 0) / conv.conversionRecords.length)
-                            : '—'}
-                        </td>
+                        <td className="px-4 py-3 text-gray-900 text-xs">Total / Avg</td>
+                        <td className="px-3 py-3 text-right text-gray-900 text-xs">{formatNumber(conv.totalCasualty)}</td>
+                        <td className="px-3 py-3 text-right text-gray-700 text-xs">{formatNumber(conv.totalInpatient)}</td>
+                        <td className="px-3 py-3 text-right text-violet-900 text-xs">{formatNumber(conv.totalConversions)}</td>
+                        <td className="px-3 py-3 text-right text-teal-700 text-xs">{conv.overallConversionRate.toFixed(1)}%</td>
+                        <td className="px-3 py-3 text-right text-gray-900 text-xs">{conv.avgConversionLOS.toFixed(1)}</td>
+                        <td className="px-3 py-3 text-right text-gray-600 text-xs">{conv.avgDirectLOS.toFixed(1)}</td>
+                        <td className="px-3 py-3 text-right text-gray-900 text-xs">{formatCurrency(conv.avgConversionRevenue)}</td>
+                        <td className="px-3 py-3 text-right text-gray-600 text-xs">{formatCurrency(conv.avgDirectRevenue)}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1075,6 +1124,7 @@ export default function AdmissionsPage() {
                         <th className="px-4 py-3 text-left font-semibold text-gray-900 text-xs">A Episode</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-900 text-xs">Specialty</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-900 text-xs">Ward</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">Days to Conv.</th>
                         <th className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">LOS</th>
                         <th className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">Revenue</th>
                       </tr>
@@ -1088,6 +1138,15 @@ export default function AdmissionsPage() {
                           <td className="px-4 py-2 text-violet-700 text-xs font-mono">{rec.inpatientEpisode}</td>
                           <td className="px-4 py-2 text-gray-600 text-xs">{rec.specialty}</td>
                           <td className="px-4 py-2 text-gray-600 text-xs">{rec.ward}</td>
+                          <td className="px-4 py-2 text-right text-xs">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                              rec.daysToConversion === 0 ? 'bg-green-50 text-green-700' :
+                              rec.daysToConversion === 1 ? 'bg-yellow-50 text-yellow-700' :
+                              'bg-orange-50 text-orange-700'
+                            }`}>
+                              {rec.daysToConversion}d
+                            </span>
+                          </td>
                           <td className="px-4 py-2 text-right text-gray-700 text-xs">{rec.los}</td>
                           <td className="px-4 py-2 text-right text-gray-900 text-xs font-medium">{formatCurrency(rec.revenue)}</td>
                         </tr>

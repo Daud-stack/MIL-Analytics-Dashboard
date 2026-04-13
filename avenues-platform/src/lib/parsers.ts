@@ -881,167 +881,255 @@ export function parseLocationCSV(csvText: string): YearData {
 
   console.log('[LOC Parser] Parsed:', totalEpisodes, 'episodes,', doctors.length, 'doctors, revenue:', totalRevenue);
 
-  // ── Casualty-to-Inpatient Conversion Analytics ──
-  // Find ward columns (columns ending with " Days" that aren't "Total Days")
+  // ══════════════════════════════════════════════════════════════
+  // Casualty-to-Inpatient Conversion Analytics (AHRQ Standard)
+  //
+  // Definition: A "conversion" occurs when a patient presents at
+  // Casualty/ED (C-episode) and is subsequently admitted as an
+  // inpatient (A-episode) within 48 hours (0-2 calendar days).
+  // Reference: AHRQ QI Technical Specifications, WHO ICD guidelines.
+  // ══════════════════════════════════════════════════════════════
+
+  const CONVERSION_WINDOW_DAYS = 2; // 0-48hrs per AHRQ standard
+
+  // Ward columns for determining primary ward
   const wardDayCols = headers.filter(h =>
     h.toLowerCase().endsWith(' days') && h.toLowerCase() !== 'total days'
   );
 
-  // Build lookup maps: key = "PATIENT_NAME|ADM_DATE"
-  interface EpisodeInfo {
+  const colICDDesc = findCol(['primary icd desc', 'icd description']);
+  const colDischDate = findCol(['disch date', 'discharge date']);
+
+  // Helper: parse date string to Date object
+  function parseFullDate(dateStr: string): Date | null {
+    if (!dateStr) return null;
+    // Try DD/MM/YYYY (Zimbabwe standard)
+    const dmyMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmyMatch) {
+      const g1 = parseInt(dmyMatch[1], 10);
+      const g2 = parseInt(dmyMatch[2], 10);
+      const yr = parseInt(dmyMatch[3], 10);
+      // If g1 > 12 → DD/MM, if g2 > 12 → MM/DD, else assume DD/MM
+      if (g1 > 12) return new Date(yr, g2 - 1, g1);
+      if (g2 > 12) return new Date(yr, g1 - 1, g2);
+      return new Date(yr, g2 - 1, g1); // DD/MM/YYYY default
+    }
+    // Try YYYY-MM-DD
+    const isoMatch = dateStr.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (isoMatch) return new Date(parseInt(isoMatch[1], 10), parseInt(isoMatch[2], 10) - 1, parseInt(isoMatch[3], 10));
+    return null;
+  }
+
+  function toAgeGroup(age: number): string {
+    if (age < 1) return 'Neonate';
+    if (age < 18) return '1-17';
+    if (age < 30) return '18-29';
+    if (age < 45) return '30-44';
+    if (age < 60) return '45-59';
+    if (age < 75) return '60-74';
+    return '75+';
+  }
+
+  // ── Episode data structure ──
+  interface EpRecord {
     episode: string;
-    name: string;
-    admDate: string;
-    admMonth: number;
+    name: string;          // uppercase patient name
+    admDateStr: string;
+    admDate: Date;
+    admMonth: number;      // 0-11
+    dischDate: Date | null;
     specialty: string;
     icdCode: string;
     icdDesc: string;
     los: number;
     revenue: number;
-    ward: string;
+    ward: string;          // primary ward (highest days)
     medAid: string;
+    age: number;
+    gender: string;
   }
 
-  const casualtyMap = new Map<string, EpisodeInfo[]>();
-  const inpatientMap = new Map<string, EpisodeInfo[]>();
-
-  const colICDDesc = findCol(['primary icd desc', 'icd description']);
+  // ── Build per-patient episode lists ──
+  const patientCasualty = new Map<string, EpRecord[]>();
+  const patientInpatient = new Map<string, EpRecord[]>();
 
   for (const row of data) {
     const ep = colEpisode ? (row[colEpisode] || '').trim() : '';
+    if (!ep) continue;
+    const epType = ep.charAt(0).toUpperCase();
+    if (epType !== 'C' && epType !== 'A') continue;
+
     const name = colPatient ? (row[colPatient] || '').trim().toUpperCase() : '';
     const admDateStr = colAdmDate ? (row[colAdmDate] || '').trim() : '';
+    const admDate = parseFullDate(admDateStr);
     const admMo = parseDateMonth(admDateStr);
-    if (!ep || !name || !admDateStr || admMo < 0) continue;
+    if (!name || !admDate || admMo < 0) continue;
 
-    const key = `${name}|${admDateStr}`;
-    const spec = colSpecialty ? (row[colSpecialty] || '').trim() : '';
-    const icd = colICD ? (row[colICD] || '').trim() : '';
-    const icdD = colICDDesc ? (row[colICDDesc] || '').trim() : '';
-    const epLos = colLOS ? parseNumber(row[colLOS]) : 0;
-    const epRev = colTotal ? parseNumber(row[colTotal]) : 0;
-    const ma = colMedAidGroup ? (row[colMedAidGroup] || '').trim() : (colMedAid ? (row[colMedAid] || '').trim() : '');
+    const dischDateStr = colDischDate ? (row[colDischDate] || '').trim() : '';
+    const dischDate = parseFullDate(dischDateStr);
 
-    // Determine primary ward (the ward with the most days)
+    // Primary ward
     let primaryWard = '';
-    let maxDays = 0;
+    let maxWardDays = 0;
     for (const wCol of wardDayCols) {
-      const days = parseNumber(row[wCol]);
-      if (days > maxDays) {
-        maxDays = days;
-        primaryWard = wCol.replace(/ Days$/i, '').trim();
-      }
+      const d = parseNumber(row[wCol]);
+      if (d > maxWardDays) { maxWardDays = d; primaryWard = wCol.replace(/ Days$/i, '').trim(); }
     }
 
-    const info: EpisodeInfo = {
-      episode: ep, name, admDate: admDateStr, admMonth: admMo,
-      specialty: spec, icdCode: icd, icdDesc: icdD,
-      los: epLos, revenue: epRev, ward: primaryWard, medAid: ma,
+    const rec: EpRecord = {
+      episode: ep,
+      name,
+      admDateStr,
+      admDate,
+      admMonth: admMo,
+      dischDate,
+      specialty: colSpecialty ? (row[colSpecialty] || '').trim() : '',
+      icdCode: colICD ? (row[colICD] || '').trim() : '',
+      icdDesc: colICDDesc ? (row[colICDDesc] || '').trim() : '',
+      los: colLOS ? parseNumber(row[colLOS]) : 0,
+      revenue: colTotal ? parseNumber(row[colTotal]) : 0,
+      ward: primaryWard,
+      medAid: colMedAidGroup ? (row[colMedAidGroup] || '').trim() : (colMedAid ? (row[colMedAid] || '').trim() : ''),
+      age: colAge ? parseNumber(row[colAge]) : 0,
+      gender: colGender ? (row[colGender] || '').trim() : '',
     };
 
-    if (ep.startsWith('C')) {
-      if (!casualtyMap.has(key)) casualtyMap.set(key, []);
-      casualtyMap.get(key)!.push(info);
-    } else if (ep.startsWith('A')) {
-      if (!inpatientMap.has(key)) inpatientMap.set(key, []);
-      inpatientMap.get(key)!.push(info);
+    if (epType === 'C') {
+      if (!patientCasualty.has(name)) patientCasualty.set(name, []);
+      patientCasualty.get(name)!.push(rec);
+    } else {
+      if (!patientInpatient.has(name)) patientInpatient.set(name, []);
+      patientInpatient.get(name)!.push(rec);
     }
   }
 
-  // Find conversions: casualty patient who also has an inpatient episode on same date
+  // ── Monthly accumulators ──
   const monthlyCasualty = new Array(12).fill(0);
   const monthlyInpatient = new Array(12).fill(0);
   const monthlyConversions = new Array(12).fill(0);
   const monthlyConvLOS = new Array(12).fill(0);
   const monthlyConvRev = new Array(12).fill(0);
-  const monthlyConvCount = new Array(12).fill(0);
+  const monthlyConvCnt = new Array(12).fill(0);
+  const monthlyDirectLOS = new Array(12).fill(0);
+  const monthlyDirectRev = new Array(12).fill(0);
+  const monthlyDirectCnt = new Array(12).fill(0);
+
   const convBySpecialty: Record<string, number> = {};
   const convByICD: Record<string, { count: number; desc: string }> = {};
   const convByWard: Record<string, number> = {};
   const convByMedAid: Record<string, number> = {};
   const convByAge: Record<string, number> = {};
+  const convByGender: Record<string, number> = {};
   const conversionRecords: ConversionRecord[] = [];
 
-  // Count monthly casualty and inpatient totals
-  for (const episodes of casualtyMap.values()) {
-    for (const ep of episodes) {
-      monthlyCasualty[ep.admMonth]++;
-    }
-  }
-  for (const episodes of inpatientMap.values()) {
-    for (const ep of episodes) {
-      monthlyInpatient[ep.admMonth]++;
-    }
+  // Count monthly casualty totals
+  for (const cList of patientCasualty.values()) {
+    for (const c of cList) monthlyCasualty[c.admMonth]++;
   }
 
-  // Find matching conversions
-  for (const [key, cEpisodes] of casualtyMap) {
-    const aEpisodes = inpatientMap.get(key);
-    if (!aEpisodes || aEpisodes.length === 0) continue;
+  // Track which A episodes are conversions vs direct admissions
+  const convertedAEpisodes = new Set<string>();
 
-    // Take the first casualty and first inpatient episode for this patient+date
-    const cEp = cEpisodes[0];
-    const aEp = aEpisodes[0];
-    const mo = aEp.admMonth;
+  // ── Match C→A within CONVERSION_WINDOW_DAYS per patient ──
+  for (const [name, cList] of patientCasualty) {
+    const aList = patientInpatient.get(name);
+    if (!aList || aList.length === 0) continue;
 
-    monthlyConversions[mo]++;
-    monthlyConvLOS[mo] += aEp.los;
-    monthlyConvRev[mo] += aEp.revenue;
-    monthlyConvCount[mo]++;
+    // Sort both by admission date
+    const sortedC = [...cList].sort((a, b) => a.admDate.getTime() - b.admDate.getTime());
+    const sortedA = [...aList].sort((a, b) => a.admDate.getTime() - b.admDate.getTime());
+    const usedA = new Set<string>();
 
-    if (aEp.specialty) convBySpecialty[aEp.specialty] = (convBySpecialty[aEp.specialty] || 0) + 1;
-    if (aEp.icdCode) {
-      if (!convByICD[aEp.icdCode]) convByICD[aEp.icdCode] = { count: 0, desc: aEp.icdDesc || aEp.icdCode };
-      convByICD[aEp.icdCode].count++;
-    }
-    if (aEp.ward) convByWard[aEp.ward] = (convByWard[aEp.ward] || 0) + 1;
-    if (aEp.medAid) convByMedAid[aEp.medAid] = (convByMedAid[aEp.medAid] || 0) + 1;
+    for (const ce of sortedC) {
+      for (const ae of sortedA) {
+        if (usedA.has(ae.episode)) continue;
+        const diffMs = ae.admDate.getTime() - ce.admDate.getTime();
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays < 0 || diffDays > CONVERSION_WINDOW_DAYS) continue;
 
-    // Determine age group from raw data
-    const rawRow = data.find(r => (colEpisode ? r[colEpisode] : '').trim() === aEp.episode);
-    if (rawRow && colAge) {
-      const epAge = parseNumber(rawRow[colAge]);
-      if (epAge > 0) {
-        let ag: string;
-        if (epAge < 18) ag = '0-17';
-        else if (epAge < 30) ag = '18-29';
-        else if (epAge < 45) ag = '30-44';
-        else if (epAge < 60) ag = '45-59';
-        else if (epAge < 75) ag = '60-74';
-        else ag = '75+';
-        convByAge[ag] = (convByAge[ag] || 0) + 1;
+        // Match found — this C episode converted to this A episode
+        usedA.add(ae.episode);
+        convertedAEpisodes.add(ae.episode);
+        const mo = ae.admMonth;
+
+        monthlyConversions[mo]++;
+        monthlyConvLOS[mo] += ae.los;
+        monthlyConvRev[mo] += ae.revenue;
+        monthlyConvCnt[mo]++;
+
+        if (ae.specialty) convBySpecialty[ae.specialty] = (convBySpecialty[ae.specialty] || 0) + 1;
+        if (ae.icdCode) {
+          if (!convByICD[ae.icdCode]) convByICD[ae.icdCode] = { count: 0, desc: ae.icdDesc || ae.icdCode };
+          convByICD[ae.icdCode].count++;
+        }
+        if (ae.ward) convByWard[ae.ward] = (convByWard[ae.ward] || 0) + 1;
+        if (ae.medAid) convByMedAid[ae.medAid] = (convByMedAid[ae.medAid] || 0) + 1;
+        if (ae.age > 0) convByAge[toAgeGroup(ae.age)] = (convByAge[toAgeGroup(ae.age)] || 0) + 1;
+        if (ae.gender) convByGender[ae.gender] = (convByGender[ae.gender] || 0) + 1;
+
+        conversionRecords.push({
+          patientName: ae.name,
+          admDate: ae.admDateStr,
+          casualtyEpisode: ce.episode,
+          inpatientEpisode: ae.episode,
+          specialty: ae.specialty,
+          icdCode: ae.icdCode,
+          icdDesc: ae.icdDesc,
+          los: ae.los,
+          revenue: ae.revenue,
+          ward: ae.ward,
+          medAid: ae.medAid,
+          age: ae.age,
+          gender: ae.gender,
+          daysToConversion: diffDays,
+        });
+        break; // one A per C
       }
     }
-
-    conversionRecords.push({
-      patientName: aEp.name,
-      admDate: aEp.admDate,
-      casualtyEpisode: cEp.episode,
-      inpatientEpisode: aEp.episode,
-      specialty: aEp.specialty,
-      icdCode: aEp.icdCode,
-      icdDesc: aEp.icdDesc,
-      los: aEp.los,
-      revenue: aEp.revenue,
-      ward: aEp.ward,
-      medAid: aEp.medAid,
-    });
   }
 
-  // Compute monthly conversion rates and ALOS
+  // Count monthly inpatient totals and track direct (non-conversion) admissions
+  for (const aList of patientInpatient.values()) {
+    for (const a of aList) {
+      monthlyInpatient[a.admMonth]++;
+      if (!convertedAEpisodes.has(a.episode)) {
+        // Direct admission (not from casualty)
+        monthlyDirectLOS[a.admMonth] += a.los;
+        monthlyDirectRev[a.admMonth] += a.revenue;
+        monthlyDirectCnt[a.admMonth]++;
+      }
+    }
+  }
+
+  // ── Compute derived monthly metrics ──
   const monthlyConvRate = monthlyCasualty.map((c, i) =>
     c > 0 ? (monthlyConversions[i] / c) * 100 : 0
   );
-  const monthlyConvALOS = monthlyConvCount.map((cnt, i) =>
+  const monthlyConvALOS = monthlyConvCnt.map((cnt, i) =>
     cnt > 0 ? monthlyConvLOS[i] / cnt : 0
   );
-  const monthlyConvAvgRev = monthlyConvCount.map((cnt, i) =>
+  const monthlyConvAvgRev = monthlyConvCnt.map((cnt, i) =>
     cnt > 0 ? monthlyConvRev[i] / cnt : 0
   );
+  const monthlyDirALOS = monthlyDirectCnt.map((cnt, i) =>
+    cnt > 0 ? monthlyDirectLOS[i] / cnt : 0
+  );
+  const monthlyDirAvgRev = monthlyDirectCnt.map((cnt, i) =>
+    cnt > 0 ? monthlyDirectRev[i] / cnt : 0
+  );
 
+  // Summary totals
   const totalConv = monthlyConversions.reduce((a, b) => a + b, 0);
   const totalCas = monthlyCasualty.reduce((a, b) => a + b, 0);
-  console.log(`[LOC Parser] Conversions: ${totalConv} of ${totalCas} casualty visits (${totalCas > 0 ? ((totalConv / totalCas) * 100).toFixed(1) : 0}%)`);
+  const totalInp = monthlyInpatient.reduce((a, b) => a + b, 0);
+  const totalConvLOS = monthlyConvLOS.reduce((a, b) => a + b, 0);
+  const totalConvRev = monthlyConvRev.reduce((a, b) => a + b, 0);
+  const totalDirLOS = monthlyDirectLOS.reduce((a, b) => a + b, 0);
+  const totalDirRev = monthlyDirectRev.reduce((a, b) => a + b, 0);
+  const totalDirCnt = monthlyDirectCnt.reduce((a, b) => a + b, 0);
+
+  console.log(`[LOC Parser] Conversions: ${totalConv} of ${totalCas} casualty (${totalCas > 0 ? ((totalConv / totalCas) * 100).toFixed(1) : 0}%), ` +
+    `ALOS conv=${totalConv > 0 ? (totalConvLOS / totalConv).toFixed(1) : '—'} vs direct=${totalDirCnt > 0 ? (totalDirLOS / totalDirCnt).toFixed(1) : '—'}`);
 
   const conversions: ConversionMetrics = {
     monthlyCasualty,
@@ -1050,12 +1138,23 @@ export function parseLocationCSV(csvText: string): YearData {
     monthlyConversionRate: monthlyConvRate,
     monthlyConversionALOS: monthlyConvALOS,
     monthlyConversionRevenue: monthlyConvAvgRev,
+    monthlyDirectALOS: monthlyDirALOS,
+    monthlyDirectRevenue: monthlyDirAvgRev,
     conversionsBySpecialty: convBySpecialty,
     conversionsByICD: convByICD,
     conversionsByWard: convByWard,
     conversionsByMedAid: convByMedAid,
     conversionsByAge: convByAge,
+    conversionsByGender: convByGender,
     conversionRecords: conversionRecords.sort((a, b) => b.revenue - a.revenue),
+    totalCasualty: totalCas,
+    totalInpatient: totalInp,
+    totalConversions: totalConv,
+    overallConversionRate: totalCas > 0 ? (totalConv / totalCas) * 100 : 0,
+    avgConversionLOS: totalConv > 0 ? totalConvLOS / totalConv : 0,
+    avgDirectLOS: totalDirCnt > 0 ? totalDirLOS / totalDirCnt : 0,
+    avgConversionRevenue: totalConv > 0 ? totalConvRev / totalConv : 0,
+    avgDirectRevenue: totalDirCnt > 0 ? totalDirRev / totalDirCnt : 0,
   };
 
   const metrics: LocationData = {

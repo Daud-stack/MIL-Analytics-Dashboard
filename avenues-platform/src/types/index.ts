@@ -107,20 +107,30 @@ export interface DashboardMetrics {
   accountSundries: number[];
 }
 
-// Casualty-to-Inpatient Conversion Analytics
+/**
+ * Casualty-to-Inpatient Conversion Analytics
+ *
+ * Based on AHRQ (Agency for Healthcare Research and Quality) and WHO definitions:
+ * A "conversion" is a patient who presents at Casualty/ED (C-episode) and is
+ * subsequently admitted as an inpatient (A-episode) within a 48-hour window.
+ */
 export interface ConversionMetrics {
   /** Monthly casualty episode counts (12 months) */
   monthlyCasualty: number[];
   /** Monthly inpatient episode counts (12 months) */
   monthlyInpatient: number[];
-  /** Monthly conversion counts — casualty patients who became inpatient same day (12 months) */
+  /** Monthly conversion counts — C→A within 48hrs (12 months) */
   monthlyConversions: number[];
   /** Monthly conversion rate % (conversions / casualty * 100) */
   monthlyConversionRate: number[];
-  /** Monthly average LOS for converted patients */
+  /** Monthly average LOS for converted inpatient episodes */
   monthlyConversionALOS: number[];
-  /** Monthly average revenue for converted patients */
+  /** Monthly average revenue for converted inpatient episodes */
   monthlyConversionRevenue: number[];
+  /** Monthly average LOS for non-converted (direct) inpatient episodes — for comparison */
+  monthlyDirectALOS: number[];
+  /** Monthly average revenue for non-converted (direct) inpatient episodes */
+  monthlyDirectRevenue: number[];
   /** Top specialties that converted patients were admitted under */
   conversionsBySpecialty: Record<string, number>;
   /** Top ICD codes for converted patients */
@@ -131,8 +141,19 @@ export interface ConversionMetrics {
   conversionsByMedAid: Record<string, number>;
   /** Age group distribution for converted patients */
   conversionsByAge: Record<string, number>;
+  /** Gender distribution for converted patients */
+  conversionsByGender: Record<string, number>;
   /** Individual conversion records for drill-down */
   conversionRecords: ConversionRecord[];
+  /** Summary totals */
+  totalCasualty: number;
+  totalInpatient: number;
+  totalConversions: number;
+  overallConversionRate: number;
+  avgConversionLOS: number;
+  avgDirectLOS: number;
+  avgConversionRevenue: number;
+  avgDirectRevenue: number;
 }
 
 export interface ConversionRecord {
@@ -147,6 +168,10 @@ export interface ConversionRecord {
   revenue: number;
   ward: string;
   medAid: string;
+  age: number;
+  gender: string;
+  /** Days between C admission and A admission (0 = same day) */
+  daysToConversion: number;
 }
 
 // Location Data Types - Enhanced
