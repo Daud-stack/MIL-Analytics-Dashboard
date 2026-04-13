@@ -233,7 +233,7 @@ export default function WardBedsPage() {
         />
         <StatCard
           title="Avg Occupancy"
-          value={`${avgOccupancy.toFixed(1)}%`}
+          value={avgOccupancy > 0 ? `${avgOccupancy.toFixed(1)}%` : 'N/A'}
           trend="neutral"
           color="blue"
         />

@@ -592,7 +592,10 @@ export function parseDashboardCSV(csvText: string): YearData {
 
   // ── Billing Statistics ──
   metrics.monthRevenue = colZ('Billing Statistics-Total Revenue');
-  metrics.revPerPatDay = colZ('Billing Statistics-Revenue Per Patient Day');
+  metrics.revPerPatDay = col('Billing Statistics-Revenue Per Patient Day')
+    || col('Revenue Per Patient Day-Revenue Per Patient Day')
+    || col('Revenue Per Patient Day')
+    || z12();
 
   // Fallback: compute Revenue Per Patient Day from Total Revenue / Total Patient Days
   const revPerPatDayAllZero = metrics.revPerPatDay.every(v => v === 0);

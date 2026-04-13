@@ -44,7 +44,21 @@ export default function RevenuePage() {
 
   // Drill-down on monthly arrays
   const revenue = useDrillDown(dashData?.monthRevenue);
-  const revPerPatDay = useDrillDown(dashData?.revPerPatDay);
+
+  // revPerPatDay fallback: if the mapped field is all zeros, try rawColumns directly
+  const revPerPatDayRaw = React.useMemo(() => {
+    const mapped = dashData?.revPerPatDay;
+    if (mapped && mapped.some(v => v > 0)) return mapped;
+    // Try rawColumns alternatives
+    const rc = dashData?.rawColumns;
+    if (rc) {
+      const alt = rc['Revenue Per Patient Day-Revenue Per Patient Day']
+        || rc['Billing Statistics-Revenue Per Patient Day'];
+      if (alt && alt.some(v => v > 0)) return alt;
+    }
+    return mapped;
+  }, [dashData]);
+  const revPerPatDay = useDrillDown(revPerPatDayRaw);
   const deposits = useDrillDown(dashData?.payments?.deposits);
   const individual = useDrillDown(dashData?.payments?.individual);
   const medAid = useDrillDown(dashData?.payments?.medAid);

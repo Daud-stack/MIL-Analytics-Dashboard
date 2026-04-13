@@ -140,10 +140,14 @@ export default function CasualtyPage() {
   const casualtyArray = metrics.admCasualty;
   const rng = seededRandom(42);
   const transferRates = casualtyArray.map((v) => {
+    if (v === 0) return 0;
     const transfer = Math.floor(v * (0.25 + rng() * 0.15)); // Estimated 25-40% transfer rate
     return (transfer / v) * 100;
   });
-  const avgTransferRate = transferRates.reduce((a, b) => a + b, 0) / transferRates.length;
+  const activeTransferRates = transferRates.filter(v => v > 0);
+  const avgTransferRate = activeTransferRates.length > 0
+    ? activeTransferRates.reduce((a, b) => a + b, 0) / activeTransferRates.length
+    : 0;
   const peakMonth = MONTHS[casualtyArray.indexOf(Math.max(...casualtyArray))];
 
   // Monthly casualty line data
