@@ -24,6 +24,7 @@ import { useDashboard } from '@/store';
 import { useDrillDown, useDrillDownRecord, type DrillDownResult } from '@/hooks/useDrillDown';
 import { useFilterStore } from '@/store/filter';
 import Link from 'next/link';
+import { ExportPdfButton } from '@/components/ui/export-pdf-button';
 
 const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (active && payload && payload.length) {
@@ -373,16 +374,19 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="space-y-4 p-6">
+    <div id="dashboard-export-target" className="space-y-4 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Management Dashboard</h1>
           <p className="mt-1 text-sm text-gray-500">Complete reporting — all data displayed as-is from CSV</p>
         </div>
-        <Button onClick={handleExport} variant="outline" size="sm" className="gap-2">
-          <Download className="h-4 w-4" /> Export
-        </Button>
+        <div className="flex items-center gap-2 export-exclude">
+          <ExportPdfButton targetId="dashboard-export-target" filename="Avenues_Dashboard_Report" />
+          <Button onClick={handleExport} variant="outline" size="sm" className="gap-2">
+            <Download className="h-4 w-4" /> Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* KPI Grid */}

@@ -12,7 +12,8 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Menu, Sun, Moon, LogOut, Settings } from "lucide-react";
+import { Menu, Sun, Moon, LogOut, Settings, Search } from "lucide-react";
+import { CommandPalette } from "@/components/layout/command-palette";
 
 const MONTHS = [
   "Full Year",
@@ -137,6 +138,17 @@ export function Header() {
             )}
           </Button>
 
+          {/* Search global shortcut button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+            className="h-9 w-9 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hidden sm:flex"
+            title="Search (Cmd+K)"
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+
           {/* User Avatar */}
           <DropdownMenu>
             <DropdownMenuTrigger className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-600 text-white hover:bg-teal-700 transition-colors text-xs font-semibold">
@@ -157,6 +169,7 @@ export function Header() {
           </DropdownMenu>
         </div>
       </div>
+      <CommandPalette />
     </header>
   );
 }
