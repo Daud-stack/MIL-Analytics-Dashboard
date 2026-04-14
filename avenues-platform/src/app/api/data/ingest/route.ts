@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     const IngestSchema = z.object({
       year: z.number().int().min(2000).max(2100),
       fileType: z.enum(['Dashboard', 'Location', 'Claims']),
-      data: z.record(z.unknown()).refine(val => Object.keys(val).length > 0, {
+      data: z.record(z.string(), z.unknown()).refine(val => Object.keys(val).length > 0, {
         message: 'data must be a non-empty object',
       }),
       fileName: z.string().min(1).max(500),

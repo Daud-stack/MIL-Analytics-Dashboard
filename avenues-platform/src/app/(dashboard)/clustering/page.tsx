@@ -93,6 +93,8 @@ const silhouetteData = [
   { k: 5, score: 0.71 },
   { k: 6, score: 0.68 },
 ];
+
+const clusterCharacteristics: Record<number, { id: number; size: number; centroidX: number; centroidY: number; characteristics: string; avgAdmissions: number; avgRevenue: number }> = {
   0: {
     id: 0,
     size: 14,
