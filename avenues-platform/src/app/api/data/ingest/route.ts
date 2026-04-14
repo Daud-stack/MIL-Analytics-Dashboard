@@ -146,6 +146,28 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       },
     });
+    
+    // ── Create Audit Log ──
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: 'UPLOAD',
+          category: fileType,
+          details: `Headless ingestion of ${fileName} (Year: ${year}) via file-watcher`,
+          metadata: {
+            fileName,
+            year,
+            sha256,
+            resourceId: result.id
+          },
+          orgId,
+          // Note: Machine-to-machine auth has no userId
+        }
+      });
+    } catch (auditError) {
+      console.warn('[/api/data/ingest] Failed to create audit log:', auditError);
+      // Don't fail the request if just the audit log fails
+    }
 
     console.log(`[/api/data/ingest] Ingested ${fileType} data for year ${year} from ${fileName}`);
 
