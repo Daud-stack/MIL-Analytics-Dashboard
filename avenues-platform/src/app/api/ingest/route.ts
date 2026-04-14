@@ -15,6 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/auth';
 import {
   readIngestStore,
   writeIngestStore,
@@ -24,6 +25,15 @@ import fs from 'fs';
 
 export async function GET(request: NextRequest) {
   try {
+    // Auth: require session OR valid API key (for file watcher M2M calls)
+    const session = await auth();
+    const apiKey = request.headers.get('x-api-key') || request.headers.get('X-API-Key');
+    const validApiKey = process.env.INGEST_API_KEY && apiKey === process.env.INGEST_API_KEY;
+
+    if (!session?.user && !validApiKey) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const storePath = getStorePath();
 
     // Check if store file exists
@@ -92,8 +102,17 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
+    // Auth: require session with ADMIN role OR valid API key
+    const session = await auth();
+    const apiKey = request.headers.get('x-api-key') || request.headers.get('X-API-Key');
+    const validApiKey = process.env.INGEST_API_KEY && apiKey === process.env.INGEST_API_KEY;
+
+    if (!validApiKey && (!session?.user || (session.user as { role?: string }).role !== 'ADMIN')) {
+      return NextResponse.json({ error: 'Unauthorized — admin access required' }, { status: 401 });
+    }
+
     const emptyStore = {
       years: {},
       processedHashes: [] as string[],

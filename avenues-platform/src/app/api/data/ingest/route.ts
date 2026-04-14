@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import prisma from '@/lib/prisma';
 
 /**
@@ -54,45 +55,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
-    // ── Parse request body ──
+    // ── Parse and validate request body ──
+    const IngestSchema = z.object({
+      year: z.number().int().min(2000).max(2100),
+      fileType: z.enum(['Dashboard', 'Location', 'Claims']),
+      data: z.record(z.unknown()).refine(val => Object.keys(val).length > 0, {
+        message: 'data must be a non-empty object',
+      }),
+      fileName: z.string().min(1).max(500),
+      sha256: z.string().regex(/^[a-f0-9]{64}$/i, 'Must be a valid SHA-256 hash'),
+    });
+
     const body = await request.json();
-    const { year, fileType, data, fileName, sha256 } = body;
+    const parsed = IngestSchema.safeParse(body);
 
-    // Validate required fields
-    if (!year || typeof year !== 'number') {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Missing or invalid field: year (must be number)' },
+        { error: 'Validation failed', details: parsed.error.issues.map(i => i.message) },
         { status: 400 }
       );
     }
 
-    if (!fileType || !['Dashboard', 'Location', 'Claims'].includes(fileType)) {
-      return NextResponse.json(
-        { error: "Invalid fileType: must be 'Dashboard', 'Location', or 'Claims'" },
-        { status: 400 }
-      );
-    }
-
-    if (!data || typeof data !== 'object') {
-      return NextResponse.json(
-        { error: 'Missing or invalid field: data (must be object)' },
-        { status: 400 }
-      );
-    }
-
-    if (!fileName || typeof fileName !== 'string') {
-      return NextResponse.json(
-        { error: 'Missing or invalid field: fileName (must be string)' },
-        { status: 400 }
-      );
-    }
-
-    if (!sha256 || typeof sha256 !== 'string') {
-      return NextResponse.json(
-        { error: 'Missing or invalid field: sha256 (must be string)' },
-        { status: 400 }
-      );
-    }
+    const { year, fileType, data, fileName, sha256 } = parsed.data;
 
     // ── Check for duplicate (same SHA-256) ──
     const existing = await prisma.yearDataRecord.findUnique({
@@ -174,7 +158,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[API /data/ingest] Error:', error);
-    const message = error instanceof Error ? error.message : 'Ingest failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error(error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: 'Ingest failed' }, { status: 500 });
   }
 }

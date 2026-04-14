@@ -17,11 +17,9 @@ import {
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
-import { ChartTooltipProps } from '@/types';
+import { ChartTooltipProps, CHART_COLORS as COLORS } from '@/types';
 import { formatNumber, formatCurrency, generateCSV, downloadCSV } from '@/lib/utils';
 import { useLocation } from '@/store';
-
-const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7', '#059669', '#dc2626'];
 
 interface ChartData {
   name?: string;

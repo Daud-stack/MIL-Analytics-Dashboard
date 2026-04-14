@@ -6,6 +6,7 @@ import { Header } from "@/components/layout/header";
 import { FilterBar } from "@/components/layout/filter-bar";
 import { useIngestSync } from "@/hooks/useIngestSync";
 import { useDbSync } from "@/hooks/useDbSync";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 export default function DashboardLayout({
   children,
@@ -32,7 +33,9 @@ export default function DashboardLayout({
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900">
           <div className="px-4 py-6 md:px-6 md:py-8 max-w-7xl mx-auto">
-            {children}
+            <ErrorBoundary name="Dashboard Area">
+              {children}
+            </ErrorBoundary>
           </div>
         </main>
       </div>

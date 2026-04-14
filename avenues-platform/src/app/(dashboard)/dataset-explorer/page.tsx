@@ -20,19 +20,12 @@ import {
   Download,
 } from 'lucide-react';
 import { useDatasetList, useCurrentYear } from '@/store';
-import { GenericDataset, ColumnProfile, COLOR_PALETTE } from '@/types';
+import { GenericDataset, ColumnProfile, COLOR_PALETTE, CHART_COLORS } from '@/types';
 import { ChartCard } from '@/components/charts/chart-card';
 import { BarChartComponent } from '@/components/charts/bar-chart';
 import { LineChartComponent } from '@/components/charts/line-chart';
 import { PieChartComponent, PieDataItem } from '@/components/charts/pie-chart';
 import { StatCard } from '@/components/charts/stat-card';
-
-// Color palette for charts
-const CHART_COLORS = [
-  '#0d9488', '#0284c7', '#7c3aed', '#db2777', '#ea580c',
-  '#65a30d', '#0891b2', '#4f46e5', '#be123c', '#a16207',
-  '#059669', '#6366f1', '#e11d48', '#d97706', '#8b5cf6',
-];
 
 function formatNumber(n: number): string {
   if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';

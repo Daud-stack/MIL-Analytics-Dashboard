@@ -132,12 +132,15 @@ function SidebarContent() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto space-y-6 px-3 py-5">
+      <nav aria-label="Main navigation" className="flex-1 overflow-y-auto space-y-6 px-3 py-5">
         {sections.map((section) => (
-          <div key={section.key}>
+          <div key={section.key} role="group" aria-labelledby={`nav-section-${section.key}`}>
             {/* Section Header */}
             <button
+              id={`nav-section-${section.key}`}
               onClick={() => toggleSection(section.key)}
+              aria-expanded={!!expandedSections[section.key]}
+              aria-controls={`nav-items-${section.key}`}
               className={cn(
                 "flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-widest transition-colors",
                 "text-slate-500 hover:text-slate-300 border-b border-slate-700 pb-2",
@@ -155,7 +158,7 @@ function SidebarContent() {
 
             {/* Section Items */}
             {expandedSections[section.key] && (
-              <div className="space-y-0.5 mt-2">
+              <div id={`nav-items-${section.key}`} role="list" className="space-y-0.5 mt-2">
                 {section.items.map((item) => {
                   const active = isActive(item.href);
                   const Icon = item.icon;
@@ -164,6 +167,9 @@ function SidebarContent() {
                     <Link
                       key={item.href}
                       href={item.href}
+                      role="listitem"
+                      aria-label={item.label}
+                      aria-current={isActive(item.href) ? "page" : undefined}
                       onClick={() => {
                         if (window.innerWidth < 768) toggleSidebar();
                       }}
@@ -202,7 +208,7 @@ export function Sidebar() {
   return (
     <>
       {/* DESKTOP SIDEBAR (always visible, in document flow) */}
-      <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-700 bg-slate-900 dark:bg-slate-950">
+      <aside aria-label="Sidebar navigation" className="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-700 bg-slate-900 dark:bg-slate-950">
         <SidebarContent />
       </aside>
 
@@ -211,6 +217,7 @@ export function Sidebar() {
       {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          aria-hidden="true"
           onClick={toggleSidebar}
         />
       )}

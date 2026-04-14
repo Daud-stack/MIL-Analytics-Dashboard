@@ -76,6 +76,7 @@ model YearDataRecord {
 
   @@unique([year, orgId])
   @@index([orgId])
+  @@index([processedHashes], type: Gin)
   @@map("year_data")
 }
 

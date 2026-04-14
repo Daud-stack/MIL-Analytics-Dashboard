@@ -21,9 +21,7 @@ import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
 import { formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useLocation } from '@/store';
-import { ChartTooltipProps } from '@/types';
-
-const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7', '#059669', '#dc2626'];
+import { ChartTooltipProps, CHART_COLORS as COLORS } from '@/types';
 
 interface ChartData {
   name?: string;

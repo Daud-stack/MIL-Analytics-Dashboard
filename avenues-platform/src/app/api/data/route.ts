@@ -122,6 +122,14 @@ export async function POST(request: NextRequest) {
 
     const orgId = user.orgId;
 
+    const updateData: any = { updatedAt: new Date() };
+    if (dashboard) updateData.dashboard = dashboard;
+    if (location) updateData.location = location;
+    if (claims) updateData.claims = claims;
+    if (datasets) updateData.datasets = datasets;
+    if (uploads) updateData.uploads = uploads;
+    if (processedHashes) updateData.processedHashes = processedHashes;
+
     const record = await prisma.yearDataRecord.upsert({
       where: { year_orgId: { year, orgId } },
       create: {
@@ -134,15 +142,7 @@ export async function POST(request: NextRequest) {
         uploads: uploads ?? [],
         processedHashes: processedHashes ?? [],
       },
-      update: {
-        ...(dashboard !== undefined && { dashboard }),
-        ...(location !== undefined && { location }),
-        ...(claims !== undefined && { claims }),
-        ...(datasets !== undefined && { datasets }),
-        ...(uploads !== undefined && { uploads }),
-        ...(processedHashes !== undefined && { processedHashes }),
-        updatedAt: new Date(),
-      },
+      update: updateData,
     });
 
     return NextResponse.json({

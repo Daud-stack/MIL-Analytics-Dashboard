@@ -1,20 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 
 /**
  * GET /api/admin/orgs
  *
- * Returns all organizations. Authenticated via the same INGEST_API_KEY
- * used by the file watcher, so you can curl it from anywhere.
+ * Returns all organizations. Authenticated via session (ADMIN role)
+ * or INGEST_API_KEY for M2M access.
  *
  * Usage:
  *   curl -H "X-API-Key: YOUR_KEY" https://mil-analytics-dashboard.vercel.app/api/admin/orgs
  */
 export async function GET(request: NextRequest) {
   try {
-    const apiKey = request.headers.get('X-API-Key');
-    if (!apiKey || apiKey !== process.env.INGEST_API_KEY) {
-      return NextResponse.json({ error: 'Invalid API key' }, { status: 401 });
+    // Auth: require ADMIN session OR valid API key
+    const session = await auth();
+    const apiKey = request.headers.get('x-api-key') || request.headers.get('X-API-Key');
+    const validApiKey = process.env.INGEST_API_KEY && apiKey === process.env.INGEST_API_KEY;
+
+    if (!validApiKey && (!session?.user || (session.user as { role?: string }).role !== 'ADMIN')) {
+      return NextResponse.json({ error: 'Unauthorized — admin access required' }, { status: 401 });
     }
 
     const orgs = await prisma.organization.findMany({
@@ -41,7 +46,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[API /admin/orgs] Error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch organizations' },
       { status: 500 },
     );
   }

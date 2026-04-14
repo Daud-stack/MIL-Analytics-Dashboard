@@ -606,21 +606,16 @@ export function normalCDF(x: number): number {
  * Uses rational approximation
  */
 export function normalInvCDF(p: number): number {
-  if (p <= 0 || p >= 1) return NaN;
+  // Clamp extreme values to prevent NaN from log(0)
+  if (p <= 0) return -8;  // ~= normalInvCDF(~0)
+  if (p >= 1) return 8;   // ~= normalInvCDF(~1)
   if (p < 0.5) return -normalInvCDF(1 - p);
 
-  p -= 0.5;
-  if (p < 0.02425) {
-    const x = Math.sqrt(-2 * Math.log(2 * p));
-    const num = 2.937036 + 2.742239 * x + 6.061516 * x * x;
-    const den = 1 + 2.429281 * x + 6.360201 * x * x;
-    return x - num / den;
-  } else {
-    const x = Math.sqrt(-2 * Math.log(p));
-    const num = 2.505401 + 0.862803 * x;
-    const den = 0.333333 + 0.632953 * x;
-    return x - num / den;
-  }
+  // Rational approximation (Abramowitz & Stegun 26.2.23 variant)
+  const t = Math.sqrt(-2 * Math.log(1 - p));
+  const c0 = 2.515517, c1 = 0.802853, c2 = 0.010328;
+  const d1 = 1.432788, d2 = 0.189269, d3 = 0.001308;
+  return t - (c0 + c1 * t + c2 * t * t) / (1 + d1 * t + d2 * t * t + d3 * t * t * t);
 }
 
 /**

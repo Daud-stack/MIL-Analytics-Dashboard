@@ -19,13 +19,11 @@ import {
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
-import { ChartTooltipProps } from '@/types';
+import { ChartTooltipProps, CHART_COLORS as COLORS } from '@/types';
 import { formatCurrency, formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useClaims } from '@/store';
 import { useDrillDown } from '@/hooks/useDrillDown';
 import { useFilterStore } from '@/store/filter';
-
-const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7', '#059669', '#dc2626'];
 
 const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (active && payload && payload.length) {

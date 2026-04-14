@@ -40,6 +40,28 @@ export const COLOR_PALETTE = {
   gray900: "#111827",
 };
 
+/**
+ * Standard chart colors used across all dashboard pages.
+ * Import this instead of defining local COLORS arrays.
+ */
+export const CHART_COLORS = [
+  '#0d9488', // teal-600
+  '#475569', // slate-600
+  '#d97706', // amber-600
+  '#e11d48', // rose-600
+  '#7c3aed', // violet-600
+  '#0284c7', // sky-600
+  '#059669', // emerald-600
+  '#dc2626', // red-600
+  '#6366f1', // indigo-500
+  '#f59e0b', // amber-500
+];
+
+/**
+ * Cluster-specific colors (distinct for scatter plots / clustering)
+ */
+export const CLUSTER_COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b'];
+
 // Dashboard & Metrics Types - Enhanced
 export interface DashboardMetrics {
   year: number;

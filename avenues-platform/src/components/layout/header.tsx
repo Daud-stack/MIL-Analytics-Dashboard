@@ -4,6 +4,7 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import { useFilterStore } from "@/store/filter";
 import { useSidebarStore } from "@/store/sidebar";
+import { useSession, signOut } from "next-auth/react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -33,7 +34,16 @@ export function Header() {
   const { year, month, compareYear, isOnline, setYear, setMonth, setCompareYear, setIsOnline } =
     useFilterStore();
   const { toggleSidebar } = useSidebarStore();
+  const { data: session } = useSession();
   const [isDark, setIsDark] = React.useState(false);
+
+  const userName = session?.user?.name || session?.user?.email || "User";
+  const userInitials = userName
+    .split(" ")
+    .map((n: string) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2) || "U";
 
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
@@ -54,6 +64,7 @@ export function Header() {
         <div className="flex items-center gap-4">
           <button
             onClick={toggleSidebar}
+            aria-label="Toggle sidebar menu"
             className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 md:hidden transition-colors"
           >
             <Menu className="h-5 w-5" />
@@ -129,22 +140,15 @@ export function Header() {
           {/* User Avatar */}
           <DropdownMenu>
             <DropdownMenuTrigger className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-600 text-white hover:bg-teal-700 transition-colors text-xs font-semibold">
-              AC
+              {userInitials}
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-48">
               <DropdownMenuItem disabled className="text-xs text-slate-600">
-                Logged in as: User
+                Logged in as: {userName}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => {}}
-                className="flex items-center gap-2 cursor-pointer"
-              >
-                <Settings className="h-4 w-4" />
-                <span>Settings</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {}}
-                className="flex items-center gap-2 cursor-pointer"
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="flex items-center gap-2 cursor-pointer text-rose-600 hover:text-rose-700"
               >
                 <LogOut className="h-4 w-4" />
                 <span>Logout</span>

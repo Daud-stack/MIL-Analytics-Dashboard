@@ -19,8 +19,7 @@ import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
 import { formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useDashboard, useLocation, useClaims } from '@/store';
-
-const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7', '#059669', '#dc2626'];
+import { CHART_COLORS as COLORS } from '@/types';
 
 function createRng(seed: number) {
   let s = seed | 0;

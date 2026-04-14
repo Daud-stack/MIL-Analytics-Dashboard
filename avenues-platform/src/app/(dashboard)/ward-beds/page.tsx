@@ -311,8 +311,8 @@ export default function WardBedsPage() {
               <Tooltip content={<CustomTooltip />} />
               <Legend />
               {WARDS.map((ward, idx) => {
-                const colors = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7'];
-                return <Line key={idx} type="monotone" dataKey={ward} stroke={colors[idx % colors.length]} strokeWidth={2} dot={false} />;
+                const wardColors = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7'];
+                return <Line key={idx} type="monotone" dataKey={ward} stroke={wardColors[idx % wardColors.length]} strokeWidth={2} dot={false} />;
               })}
             </LineChart>
           </ResponsiveContainer>

@@ -373,11 +373,14 @@ export const useStore = create<StoreState>()(
               if (scaledEps === 0 && scaledRev === 0) continue; // nothing new for this doctor
               const ex = docMap.get(d.name);
               if (ex) {
+                const totalEps = ex.episodes + scaledEps;
                 docMap.set(d.name, {
                   ...d,
-                  episodes: ex.episodes + scaledEps,
+                  episodes: totalEps,
                   revenue: ex.revenue + scaledRev,
-                  avgLOS: (ex.avgLOS + d.avgLOS) / 2,
+                  avgLOS: totalEps > 0
+                    ? (ex.avgLOS * ex.episodes + d.avgLOS * scaledEps) / totalEps
+                    : ex.avgLOS,
                   patients: ex.patients + scaledPat,
                 });
               } else {
@@ -449,7 +452,7 @@ export const useStore = create<StoreState>()(
 
             // Scale incoming aggregates by fraction of truly new rows
             const scaleScheme = (s: ClaimSchemeData): ClaimSchemeData => ({
-              totalClaimed: s.totalClaimed * newFraction,
+              totalClaimed: Math.round(s.totalClaimed * newFraction * 100) / 100,
               submitted: Math.round(s.submitted * newFraction),
               received: Math.round(s.received * newFraction),
               rejected: Math.round(s.rejected * newFraction),
@@ -504,7 +507,7 @@ export const useStore = create<StoreState>()(
               ...b,
               year,
               totalClaims: a.totalClaims + Math.round(b.totalClaims * newFraction),
-              totalClaimed: a.totalClaimed + (b.totalClaimed * newFraction),
+              totalClaimed: Math.round((a.totalClaimed + b.totalClaimed * newFraction) * 100) / 100,
               submitted: a.submitted + Math.round(b.submitted * newFraction),
               received: a.received + Math.round(b.received * newFraction),
               rejected: a.rejected + Math.round(b.rejected * newFraction),
@@ -537,10 +540,28 @@ export const useStore = create<StoreState>()(
             ...(normalizedData.uploads || []),
           ];
 
-          const mergedDatasets = {
-            ...(existing.datasets || {}),
-            ...(normalizedData.datasets || {}),
-          };
+          // Merge datasets with schema-aware deduplication
+          const mergedDatasets = { ...(existing.datasets || {}) };
+          if (normalizedData.datasets) {
+            for (const [id, incoming] of Object.entries(normalizedData.datasets)) {
+              const ds = incoming as GenericDataset;
+              // Check if a dataset with the same schemaId already exists
+              const existingDs = Object.values(mergedDatasets).find(
+                (d) => (d as GenericDataset).schemaId === ds.schemaId
+              ) as GenericDataset | undefined;
+              if (existingDs) {
+                try {
+                  const { mergeDatasets } = require('@/lib/generic-parser');
+                  mergedDatasets[existingDs.id] = mergeDatasets(existingDs, ds);
+                } catch {
+                  // Fallback: overwrite if merge unavailable
+                  mergedDatasets[id] = ds;
+                }
+              } else {
+                mergedDatasets[id] = ds;
+              }
+            }
+          }
 
           // ──────────────────────────────────────────────────────
           // ASSEMBLE the merged YearData
@@ -730,8 +751,13 @@ export const useStore = create<StoreState>()(
       markFileProcessed: (hash: string) => {
         set((state) => {
           if (state.processedFileHashes.includes(hash)) return state;
+          // Cap at 2000 most recent hashes to prevent unbounded localStorage growth
+          const MAX_HASHES = 2000;
+          const updated = [...state.processedFileHashes, hash];
           return {
-            processedFileHashes: [...state.processedFileHashes, hash],
+            processedFileHashes: updated.length > MAX_HASHES
+              ? updated.slice(updated.length - MAX_HASHES)
+              : updated,
           };
         });
       },

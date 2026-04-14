@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/auth';
 import Papa from 'papaparse';
 import { detectFileType, detectYear, autoParseCSV } from '@/lib/parsers';
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth: require authenticated session
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized — please sign in' },
+        { status: 401 }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
@@ -71,7 +81,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: 'Failed to process uploaded file',
       },
       { status: 500 }
     );

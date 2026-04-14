@@ -25,16 +25,26 @@ const linearForecast = (data: number[], forecastMonths: number = 6): { value: nu
   const slope = denominator !== 0 ? numerator / denominator : 0;
   const intercept = meanY - slope * meanX;
 
-  // Generate forecast points
+  // Calculate residual standard error
+  const residuals = data.map((val, i) => val - (intercept + slope * i));
+  const sse = residuals.reduce((sum, r) => sum + r * r, 0);
+  const residualSE = Math.sqrt(sse / Math.max(n - 2, 1));
+
+  // Sum of squared deviations of x from mean (for prediction interval correction)
+  const ssx = indices.reduce((sum, x) => sum + Math.pow(x - meanX, 2), 0);
+
+  // Generate forecast points with proper prediction intervals
   const forecast = [];
   for (let i = 0; i < forecastMonths; i++) {
     const x = n + i;
     const value = intercept + slope * x;
-    const std = Math.sqrt(data.reduce((sum, val) => sum + Math.pow(val - (intercept + slope * indices[data.indexOf(val)]), 2), 0) / Math.max(n - 2, 1));
+    // Prediction interval includes: (1) future obs variance, (2) mean estimation error, (3) slope extrapolation error
+    const predictionFactor = Math.sqrt(1 + 1/n + Math.pow(x - meanX, 2) / (ssx || 1));
+    const margin = 1.96 * residualSE * predictionFactor;
     forecast.push({
       value: Math.max(value, 0),
-      upper: value + 1.96 * std,
-      lower: Math.max(value - 1.96 * std, 0)
+      upper: value + margin,
+      lower: Math.max(value - margin, 0)
     });
   }
 

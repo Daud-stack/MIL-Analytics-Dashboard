@@ -42,7 +42,11 @@ function LoginForm() {
       if (result?.error) {
         setError("Invalid email or password. Please try again.");
       } else if (result?.ok) {
-        const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+        // Validate callback URL to prevent open redirect attacks
+        const rawCallback = searchParams.get("callbackUrl") || "/dashboard";
+        const callbackUrl = rawCallback.startsWith("/") && !rawCallback.startsWith("//")
+          ? rawCallback
+          : "/dashboard";
         router.push(callbackUrl);
       }
     } catch (err) {

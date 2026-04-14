@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import { Beaker, AlertCircle } from 'lucide-react';
 import { useDashboard } from '@/store';
+import { normalCDF, normalInvCDF } from '@/lib/stats';
 import type { DashboardMetrics } from '@/types';
 
 type TestType = 't-test' | 'chi-square' | 'anova' | 'shapiro-wilk' | 'z-test';
@@ -66,9 +67,9 @@ const generateQQPlotData = (data: number[]) => {
   const stdev = Math.sqrt(variance);
 
   return sorted.map((value, idx) => {
-    // Normal quantile for each position
+    // Normal quantile for each position using proper inverse normal CDF
     const q = (idx + 1) / (sorted.length + 1);
-    const theoretical = mean + stdev * Math.sqrt(2) * Math.pow(-Math.log(1 - q), 0.5);
+    const theoretical = mean + stdev * normalInvCDF(q);
     return { theoretical, actual: value };
   });
 };
@@ -88,8 +89,8 @@ const performTTest = (group1: number[], group2: number[]): TestResult => {
   const tStat = (mean1 - mean2) / se;
   const df = group1.length + group2.length - 2;
 
-  // Approximate p-value
-  const pValue = tStat > 0 ? 0.001 : 0.85;
+  // Approximate p-value using normal CDF (valid for large df; reasonable for df > 5)
+  const pValue = 2 * (1 - normalCDF(Math.abs(tStat)));
   const effectSize = (mean1 - mean2) / Math.sqrt(pooledVar);
 
   return {
@@ -124,8 +125,13 @@ const performShapiroWilk = (data: number[]): TestResult => {
 
   const W = (numerator / denominator) ** 2;
 
-  // Simplified p-value based on W
-  const pValue = W > 0.95 ? 0.5 : W > 0.90 ? 0.1 : W > 0.85 ? 0.01 : 0.001;
+  // Approximate p-value using Royston's log-transform for Shapiro-Wilk
+  // For W near 1 (normal), p should be high; for W near 0, p should be low
+  const n = sorted.length;
+  const mu = 0.0038915 * Math.log(n) ** 3 - 0.083751 * Math.log(n) ** 2 - 0.31082 * Math.log(n) - 1.5861;
+  const sigma = Math.exp(0.0030302 * Math.log(n) ** 2 - 0.082676 * Math.log(n) - 0.4803);
+  const zW = (Math.log(1 - W) - mu) / sigma;
+  const pValue = 1 - normalCDF(zW);
 
   return {
     testStatistic: parseFloat(W.toFixed(4)),
@@ -159,8 +165,14 @@ const performANOVA = (group1: number[], group2: number[]): TestResult => {
     }, 0) /
     (groups.reduce((a, g) => a + g.length, 0) - groups.length);
 
-  const F = betweenGroupVar / withinGroupVar;
-  const pValue = F > 2 ? 0.001 : F > 1.5 ? 0.05 : 0.2;
+  const F = betweenGroupVar / (withinGroupVar || 1e-10);
+  // Approximate F-distribution p-value using normal approximation
+  // For moderate df values, use Wilson-Hilferty approximation
+  const df1 = groups.length - 1;
+  const df2 = groups.reduce((a, g) => a + g.length, 0) - groups.length;
+  const z = Math.pow(F * df1 / df2, 1/3) * (1 - 2 / (9 * df2)) - (1 - 2 / (9 * df1));
+  const denom = Math.sqrt(2 / (9 * df1) + Math.pow(F * df1 / df2, 2/3) * (2 / (9 * df2)));
+  const pValue = 1 - normalCDF(z / (denom || 1));
 
   return {
     testStatistic: parseFloat(F.toFixed(4)),
@@ -183,7 +195,8 @@ const performZTest = (sample: number[]): TestResult => {
 
   const populationMean = 240;
   const Z = (mean - populationMean) / se;
-  const pValue = Math.abs(Z) > 1.96 ? 0.05 : 0.3;
+  // Two-tailed p-value from standard normal
+  const pValue = 2 * (1 - normalCDF(Math.abs(Z)));
 
   return {
     testStatistic: parseFloat(Z.toFixed(4)),
@@ -223,14 +236,30 @@ export default function StatisticalTestsPage() {
         return performANOVA(group1Sample, group2Sample);
       case 'z-test':
         return performZTest(group1Sample);
-      case 'chi-square':
+      case 'chi-square': {
+        // Compute chi-square from contingency table
+        const table = [
+          { observed: 45, expected: 40 },
+          { observed: 38, expected: 40 },
+          { observed: 52, expected: 50 },
+          { observed: 35, expected: 40 },
+        ];
+        const chiSq = table.reduce((sum, r) => sum + Math.pow(r.observed - r.expected, 2) / r.expected, 0);
+        const chiDf = table.length - 1;
+        // Wilson-Hilferty approximation for chi-square p-value
+        const chiZ = Math.pow(chiSq / chiDf, 1/3) - (1 - 2 / (9 * chiDf));
+        const chiDenom = Math.sqrt(2 / (9 * chiDf));
+        const chiP = 1 - normalCDF(chiZ / chiDenom);
         return {
-          testStatistic: 8.234,
-          pValue: 0.0412,
-          degreesOfFreedom: 3,
-          significant: true,
-          interpretation: 'Significant association found between variables (p < 0.05)',
+          testStatistic: parseFloat(chiSq.toFixed(4)),
+          pValue: parseFloat(chiP.toFixed(4)),
+          degreesOfFreedom: chiDf,
+          significant: chiP < 0.05,
+          interpretation: chiP < 0.05
+            ? `Significant association found between variables (p = ${chiP.toFixed(4)})`
+            : `No significant association between variables (p = ${chiP.toFixed(4)})`,
         };
+      }
       default:
         return {
           testStatistic: 0,

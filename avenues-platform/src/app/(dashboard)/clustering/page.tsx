@@ -17,6 +17,7 @@ import {
 import { Zap, AlertCircle } from 'lucide-react';
 import { useDashboard } from '@/store';
 import type { DashboardMetrics } from '@/types';
+import { CLUSTER_COLORS as colors } from '@/types';
 
 interface ClusterPoint {
   x: number;
@@ -92,8 +93,6 @@ const silhouetteData = [
   { k: 5, score: 0.71 },
   { k: 6, score: 0.68 },
 ];
-
-const clusterCharacteristics: Record<number, ClusterInfo> = {
   0: {
     id: 0,
     size: 14,
@@ -131,8 +130,6 @@ const clusterCharacteristics: Record<number, ClusterInfo> = {
     avgRevenue: 1750,
   },
 };
-
-const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b'];
 
 export default function ClusteringPage() {
   const dashboardData = useDashboard();

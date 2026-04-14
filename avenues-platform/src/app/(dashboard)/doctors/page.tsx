@@ -22,8 +22,7 @@ import { Button } from '@/components/ui/button';
 import { formatCurrency, formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { mean, median, sd } from '@/lib/stats';
 import { useLocation } from '@/store';
-
-const COLORS = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7', '#059669', '#dc2626'];
+import { CHART_COLORS as COLORS } from '@/types';
 
 export default function DoctorsPage() {
   const location = useLocation();

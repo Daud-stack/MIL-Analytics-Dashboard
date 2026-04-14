@@ -103,6 +103,9 @@ export default function MLModelsPage() {
       const startTime = performance.now();
 
       log.push(`Dataset: ${dataset.X.length} samples x ${dataset.featureNames.length} features`);
+      if (dataset.sampleWarning) {
+        log.push(`⚠️ ${dataset.sampleWarning}`);
+      }
       log.push(`Target: ${TARGET_OPTIONS.find(t => t.value === effectiveTarget)?.label}`);
       log.push(`Model: ${MODEL_OPTIONS.find(m => m.value === selectedModel)?.label}`);
 

@@ -13,6 +13,7 @@ export interface MLDataset {
   y: number[];        // target vector (n_samples)
   featureNames: string[];
   sampleLabels: string[];
+  sampleWarning?: string; // Warning if insufficient data for reliable results
 }
 
 export interface TrainTestSplit {
@@ -708,7 +709,14 @@ export function buildDataset(
     if (rev > 0 || adm > 0) activeMonths.push(m);
   }
 
-  if (activeMonths.length < 3) return null; // Need at least 3 samples
+  if (activeMonths.length < 3) return null; // Need at least 3 active months
+
+  // Build feature matrix (with sample size warning metadata)
+  const sampleWarning = activeMonths.length < 6
+    ? `Warning: Only ${activeMonths.length} active months detected. Results may be unreliable. Recommend at least 6 months of data for meaningful analysis, 12 months for robust results.`
+    : activeMonths.length < 12
+      ? `Note: ${activeMonths.length} active months. A full 12 months of data would improve model reliability.`
+      : undefined;
 
   // Build feature matrix
   const X = activeMonths.map(m => features.map(f => f.extract(data, m)));
@@ -740,6 +748,7 @@ export function buildDataset(
     y,
     featureNames: features.map(f => f.label),
     sampleLabels,
+    sampleWarning,
   };
 }
 
