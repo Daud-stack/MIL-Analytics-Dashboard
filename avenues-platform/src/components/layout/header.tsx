@@ -14,6 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Menu, Sun, Moon, LogOut, Settings, Search } from "lucide-react";
 import { CommandPalette } from "@/components/layout/command-palette";
+import { NotificationBell } from "@/components/layout/notification-bell";
+import Link from "next/link";
 
 const MONTHS = [
   "Full Year",
@@ -138,6 +140,9 @@ export function Header() {
             )}
           </Button>
 
+          {/* Notification Bell */}
+          <NotificationBell />
+
           {/* Search global shortcut button */}
           <Button
             variant="ghost"
@@ -158,6 +163,18 @@ export function Header() {
               <DropdownMenuItem disabled className="text-xs text-slate-600">
                 Logged in as: {userName}
               </DropdownMenuItem>
+              <Link href="/settings">
+                <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
+                  <Settings className="h-4 w-4" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+              </Link>
+              <Link href="/audit">
+                <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
+                  <Search className="h-4 w-4" />
+                  <span>Audit Trail</span>
+                </DropdownMenuItem>
+              </Link>
               <DropdownMenuItem
                 onClick={() => signOut({ callbackUrl: "/login" })}
                 className="flex items-center gap-2 cursor-pointer text-rose-600 hover:text-rose-700"

@@ -128,6 +128,18 @@ export async function POST(request: NextRequest) {
       update: updateData,
     });
 
+    await prisma.auditLog.create({
+      data: {
+        action: 'WEBHOOK',
+        category: category,
+        details: `Ingested ${category} data for year ${year} via ${source}`,
+        orgId: org.id,
+        userName: `System (${source})`,
+        ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+        metadata: { year, source, category }
+      }
+    });
+
     console.log(
       `[Webhook] ✅ ${category} data ingested for ${org.name} (${year}) via ${source} | record=${record.id}`
     );

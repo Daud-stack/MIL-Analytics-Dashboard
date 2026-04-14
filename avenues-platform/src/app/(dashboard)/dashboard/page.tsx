@@ -25,6 +25,7 @@ import { useDrillDown, useDrillDownRecord, type DrillDownResult } from '@/hooks/
 import { useFilterStore } from '@/store/filter';
 import Link from 'next/link';
 import { ExportPdfButton } from '@/components/ui/export-pdf-button';
+import { AIFindingsCard } from '@/components/dashboard/ai-findings-card';
 
 const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (active && payload && payload.length) {
@@ -388,6 +389,9 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      {/* AI Intelligence Insights */}
+      <AIFindingsCard />
 
       {/* KPI Grid */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

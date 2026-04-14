@@ -35,6 +35,9 @@ import {
   Database,
   Search,
   ChevronDown,
+  ShieldAlert,
+  Zap,
+  Wallet,
 } from "lucide-react";
 
 interface SidebarItem {
@@ -107,6 +110,30 @@ const sections: SidebarSection[] = [
       { label: "Data Quality", href: "/data-qa", icon: ShieldCheck },
       { label: "Robust Data", href: "/data-robust", icon: Database },
       { label: "Search", href: "/search", icon: Search },
+    ],
+  },
+  {
+    title: "TREASURY",
+    key: "treasury",
+    items: [
+      { label: "Financial Health", href: "/treasury", icon: Wallet },
+      { label: "Profitability", href: "/profitability", icon: Target },
+    ],
+  },
+  {
+    title: "INTEL",
+    key: "intel",
+    items: [
+      { label: "Claims Risk", href: "/claims-risk", icon: ShieldAlert },
+      { label: "Anomaly Pulse", href: "/anomalies", icon: Zap },
+    ],
+  },
+  {
+    title: "SYSTEM",
+    key: "system",
+    items: [
+      { label: "Audit Trail", href: "/audit", icon: ShieldCheck },
+      { label: "Settings", href: "/settings", icon: LayoutDashboard },
     ],
   },
 ];

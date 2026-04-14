@@ -145,6 +145,20 @@ export async function POST(request: NextRequest) {
       update: updateData,
     });
 
+    // Create Audit Log
+    await prisma.auditLog.create({
+      data: {
+        action: 'DATA_WRITE',
+        category: 'Dashboard',
+        details: `Updated data for year ${year}`,
+        userId: session.user.id,
+        userName: session.user.name || session.user.email || 'Unknown',
+        orgId: orgId,
+        ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+        metadata: { year }
+      }
+    });
+
     return NextResponse.json({
       success: true,
       year: record.year,
@@ -188,6 +202,20 @@ export async function DELETE(request: NextRequest) {
 
     await prisma.yearDataRecord.deleteMany({
       where: { year, orgId: user.orgId },
+    });
+
+    // Create Audit Log
+    await prisma.auditLog.create({
+      data: {
+        action: 'DATA_DELETE',
+        category: 'Dashboard',
+        details: `Deleted data for year ${year}`,
+        userId: session.user.id,
+        userName: session.user.name || session.user.email || 'Unknown',
+        orgId: user.orgId,
+        ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+        metadata: { year }
+      }
     });
 
     return NextResponse.json({ success: true, deleted: year });

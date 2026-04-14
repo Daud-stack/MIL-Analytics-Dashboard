@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { Upload, X, CheckCircle, AlertCircle, File, Zap, RefreshCw, Trash2, Clock, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RoleGuard } from '@/components/auth/role-guard';
+import { useNotifications } from '@/store/notifications';
+import { useRouter } from 'next/navigation';
 import { useStore, useAddYearData, useUploads, useRemoveUpload, useCurrentYear, useDatasetList, useAddDataset, useRemoveDataset, useIsFileProcessed, useMarkFileProcessed, useYears } from '@/store';
 import { YearData, UploadRecord, UploadCategory, GenericDataset } from '@/types';
 import { parseDashboardCSV, parseLocationCSV, parseClaimsCSV, detectYear, detectFacilityName } from '@/lib/parsers';
 import { parseGenericCSV } from '@/lib/generic-parser';
+import { Upload, FileText, CheckCircle, AlertCircle, X, Loader2, Database, Trash2, Calendar, FileType, Info, ChevronRight, File, RefreshCw, Zap, Clock } from 'lucide-react';
 
 interface FileUpload {
   id: string;
@@ -108,7 +110,6 @@ function detectAndParse(csvText: string, manualYear: number | null): {
   // ====== STRATEGY 1: Dashboard CSV Detection ======
   // Dashboard CSVs have: Line 1 = facility, Line 2 = report description with date range, Line 3 = "Date,..." headers
   const isDashboard =
-    // Primary: line 2 mentions "dashboard report" or "management" + "report"
     secondLine.toLowerCase().includes('dashboard report') ||
     secondLine.toLowerCase().includes('management report') ||
     (secondLine.toLowerCase().includes('report') && secondLine.match(/\d{2}\/\d{2}\/\d{4}/)) ||
@@ -288,6 +289,7 @@ export default function UploadPage() {
   const isFileProcessed = useIsFileProcessed();
   const markFileProcessed = useMarkFileProcessed();
   const router = useRouter();
+  const { addNotification } = useNotifications();
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -512,6 +514,30 @@ export default function UploadPage() {
           });
           addYearData(upload.year, dataToStore);
 
+          // Create Audit Log
+          fetch('/api/audit', {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'UPLOAD',
+              category: 'Dashboard',
+              details: `Uploaded ${upload.type} file: ${upload.file.name} for year ${upload.year}`,
+              metadata: {
+                fileName: upload.file.name,
+                type: upload.type,
+                year: upload.year,
+                rowCount: upload.rowCount,
+              }
+            })
+          });
+
+          // Add Notification
+          addNotification({
+            type: 'success',
+            title: 'Data Uploaded',
+            message: `Successfully processed ${upload.file.name} (${upload.rowCount} rows)`,
+            link: '/dashboard'
+          });
+
           // Mark file as processed to prevent future duplicates
           if (upload.fileHash) {
             markFileProcessed(upload.fileHash);
@@ -570,294 +596,296 @@ export default function UploadPage() {
   const processingCount = uploads.filter(u => u.status === 'processing').length;
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Data Upload</h1>
-        <p className="mt-1 text-sm text-gray-500">Import CSV files — Dashboard, Location/Episode, and Claims formats are auto-detected</p>
-      </div>
+    <RoleGuard allowedRoles={['ADMIN', 'ANALYST']}>
+      <div className="space-y-6 p-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Data Upload</h1>
+          <p className="mt-1 text-sm text-gray-500">Import CSV files — Dashboard, Location/Episode, and Claims formats are auto-detected</p>
+        </div>
 
-      {/* Manual Year Override */}
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Override Year Detection</label>
-        <input
-          type="number"
-          value={manualYear || ''}
-          onChange={(e) => setManualYear(e.target.value ? parseInt(e.target.value) : null)}
-          min="2020"
-          max="2030"
-          placeholder="Auto-detect (optional)"
-          className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-        />
-        <p className="mt-1 text-xs text-gray-500">Leave blank to auto-detect from file content</p>
-      </div>
+        {/* Manual Year Override */}
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Override Year Detection</label>
+          <input
+            type="number"
+            value={manualYear || ''}
+            onChange={(e) => setManualYear(e.target.value ? parseInt(e.target.value) : null)}
+            min="2020"
+            max="2030"
+            placeholder="Auto-detect (optional)"
+            className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+          />
+          <p className="mt-1 text-xs text-gray-500">Leave blank to auto-detect from file content</p>
+        </div>
 
-      {/* Drag and Drop Zone */}
-      <div
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
-        className={`rounded-xl border-2 border-dashed p-12 text-center transition ${
-          dragActive
-            ? 'border-teal-500 bg-teal-50'
-            : 'border-gray-300 bg-gray-50 hover:border-gray-400'
-        }`}
-      >
-        <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-        <h3 className="text-lg font-semibold text-gray-900 mb-1">Drag files here</h3>
-        <p className="text-sm text-gray-500 mb-4">or click to select CSV files</p>
-        <Button
-          onClick={() => fileInputRef.current?.click()}
-          variant="outline"
-          className="mb-3"
+        {/* Drag and Drop Zone */}
+        <div
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+          className={`rounded-xl border-2 border-dashed p-12 text-center transition ${
+            dragActive
+              ? 'border-teal-500 bg-teal-50'
+              : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+          }`}
         >
-          Select Files
-        </Button>
-        <p className="text-xs text-gray-500">Supports: Management Dashboard, CPT Statistics/LOC, Claims CSV files</p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".csv"
-          onChange={handleChange}
-          className="hidden"
-        />
-      </div>
+          <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Drag files here</h3>
+          <p className="text-sm text-gray-500 mb-4">or click to select CSV files</p>
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            variant="outline"
+            className="mb-3"
+          >
+            Select Files
+          </Button>
+          <p className="text-xs text-gray-500">Supports: Management Dashboard, CPT Statistics/LOC, Claims CSV files</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".csv"
+            onChange={handleChange}
+            className="hidden"
+          />
+        </div>
 
-      {/* Upload Queue */}
-      {uploads.length > 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-gray-900">Upload Queue — {uploads.length} file(s)</h2>
-            <p className="mt-1 text-xs text-gray-500">
-              {processingCount > 0 && <span className="text-blue-600">{processingCount} parsing... </span>}
-              {completedCount > 0 && <span className="text-green-600">{completedCount} ready </span>}
-              {errorCount > 0 && <span className="text-red-600">{errorCount} failed </span>}
-            </p>
-          </div>
-          <div className="divide-y divide-gray-200">
-            {uploads.map(upload => (
-              <div key={upload.id} className="px-5 py-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <File className="h-5 w-5 text-gray-400 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900 truncate">{upload.file.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {upload.type !== 'Unknown' && (
-                            <>
-                              <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold mr-2 ${
-                                upload.type === 'Dashboard' ? 'bg-teal-100 text-teal-800' :
-                                upload.type === 'Location' ? 'bg-blue-100 text-blue-800' :
-                                'bg-amber-100 text-amber-800'
-                              }`}>{upload.type}</span>
-                            </>
-                          )}
-                          {upload.facilityName !== 'Unknown' && upload.facilityName !== 'Reading...' && (
-                            <span>{upload.facilityName} · </span>
-                          )}
-                          Year: {upload.year} · {upload.rowCount} rows
-                        </p>
+        {/* Upload Queue */}
+        {uploads.length > 0 && (
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-200 px-5 py-4">
+              <h2 className="text-sm font-semibold text-gray-900">Upload Queue — {uploads.length} file(s)</h2>
+              <p className="mt-1 text-xs text-gray-500">
+                {processingCount > 0 && <span className="text-blue-600">{processingCount} parsing... </span>}
+                {completedCount > 0 && <span className="text-green-600">{completedCount} ready </span>}
+                {errorCount > 0 && <span className="text-red-600">{errorCount} failed </span>}
+              </p>
+            </div>
+            <div className="divide-y divide-gray-200">
+              {uploads.map(upload => (
+                <div key={upload.id} className="px-5 py-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <File className="h-5 w-5 text-gray-400 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 truncate">{upload.file.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {upload.type !== 'Unknown' && (
+                              <>
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold mr-2 ${
+                                  upload.type === 'Dashboard' ? 'bg-teal-100 text-teal-800' :
+                                  upload.type === 'Location' ? 'bg-blue-100 text-blue-800' :
+                                  'bg-amber-100 text-amber-800'
+                                }`}>{upload.type}</span>
+                              </>
+                            )}
+                            {upload.facilityName !== 'Unknown' && upload.facilityName !== 'Reading...' && (
+                              <span>{upload.facilityName} · </span>
+                            )}
+                            Year: {upload.year} · {upload.rowCount} rows
+                          </p>
+                        </div>
+                        {upload.status === 'complete' && <CheckCircle className="h-5 w-5 text-green-600 ml-auto shrink-0" />}
+                        {upload.status === 'error' && <AlertCircle className="h-5 w-5 text-red-600 ml-auto shrink-0" />}
+                        {upload.status === 'processing' && <RefreshCw className="h-5 w-5 text-blue-500 ml-auto shrink-0 animate-spin" />}
                       </div>
-                      {upload.status === 'complete' && <CheckCircle className="h-5 w-5 text-green-600 ml-auto shrink-0" />}
-                      {upload.status === 'error' && <AlertCircle className="h-5 w-5 text-red-600 ml-auto shrink-0" />}
-                      {upload.status === 'processing' && <RefreshCw className="h-5 w-5 text-blue-500 ml-auto shrink-0 animate-spin" />}
+
+                      {/* Parsing Validation Bar */}
+                      {upload.columnScore > 0 && (
+                        <div className="mb-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium text-gray-600">Parsing Validation</span>
+                            <span className="text-xs font-bold text-gray-900">{upload.columnScore}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full transition ${
+                                upload.columnScore >= 80 ? 'bg-green-500' :
+                                upload.columnScore >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                              }`}
+                              style={{ width: `${upload.columnScore}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Progress Bar */}
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div
+                          className={`h-1.5 rounded-full transition ${upload.status === 'processing' ? 'bg-blue-400 animate-pulse' : 'bg-teal-500'}`}
+                          style={{ width: `${upload.progress}%` }}
+                        />
+                      </div>
+
+                      {/* Preview of parsed data */}
+                      {upload.status === 'complete' && upload.type === 'Dashboard' && upload.parsedData?.dashboard && (
+                        <div className="mt-3 rounded-lg bg-teal-50 p-3 text-xs text-teal-800">
+                          <p className="font-semibold mb-1">Dashboard Data Preview:</p>
+                          <div className="grid grid-cols-2 gap-1">
+                            <div>Total Revenue: ${upload.parsedData.dashboard.totalRevenue.toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
+                            <div>Episodes: {upload.parsedData.dashboard.epsFinalised.reduce((a: number, b: number) => a + b, 0).toLocaleString()}</div>
+                            <div>Lab Admissions: {upload.parsedData.dashboard.admLab.reduce((a: number, b: number) => a + b, 0).toLocaleString()}</div>
+                            <div>Prescriptions: {upload.parsedData.dashboard.pharmacyRx.reduce((a: number, b: number) => a + b, 0).toLocaleString()}</div>
+                          </div>
+                        </div>
+                      )}
+                      {upload.status === 'complete' && upload.type === 'Location' && upload.parsedData?.location && (
+                        <div className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
+                          <p className="font-semibold mb-1">Location/Episode Data Preview:</p>
+                          <div className="grid grid-cols-2 gap-1">
+                            <div>Episodes: {(upload.parsedData.location.episodes || upload.rowCount).toLocaleString()}</div>
+                            <div>Doctors: {upload.parsedData.location.doctors?.length || 0}</div>
+                            <div>Revenue: ${(upload.parsedData.location.totalRevenue || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
+                            <div>Specialties: {Object.keys(upload.parsedData.location.specialties || {}).length}</div>
+                          </div>
+                        </div>
+                      )}
+                      {upload.status === 'complete' && upload.type === 'Claims' && upload.parsedData?.claims && (
+                        <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                          <p className="font-semibold mb-1">Claims Data Preview:</p>
+                          <div className="grid grid-cols-2 gap-1">
+                            <div>Total Claims: {upload.parsedData.claims.totalClaims.toLocaleString()}</div>
+                            <div>Total Claimed: ${upload.parsedData.claims.totalClaimed.toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
+                          </div>
+                        </div>
+                      )}
+
+                      {upload.status === 'complete' && upload.type === 'Generic' && upload.genericData && (
+                        <div className="mt-3 rounded-lg bg-violet-50 p-3 text-xs text-violet-800">
+                          <p className="font-semibold mb-1">Generic Dataset Preview:</p>
+                          <div className="grid grid-cols-2 gap-1">
+                            <div>Rows: {upload.genericData.rowCount.toLocaleString()}</div>
+                            <div>Columns: {upload.genericData.schema.columnNames.length}</div>
+                            <div>Numeric: {upload.genericData.columnProfiles.filter(c => c.type === 'numeric').length}</div>
+                            <div>Categorical: {upload.genericData.columnProfiles.filter(c => c.type === 'categorical').length}</div>
+                          </div>
+                          <p className="mt-1 text-[10px] text-violet-600">Cols: {upload.genericData.schema.columnNames.slice(0, 8).join(', ')}{upload.genericData.schema.columnNames.length > 8 ? '...' : ''}</p>
+                        </div>
+                      )}
+
+                      {/* Duplicate file warning */}
+                      {upload.isDuplicate && upload.status === 'complete' && (
+                        <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold">Duplicate file detected</p>
+                            <p className="mt-0.5">This file has already been processed. It will be <strong>skipped</strong> to prevent double-counting. Remove it from the queue or upload a different file.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {upload.status === 'error' && upload.error && (
+                        <p className="mt-2 text-xs text-red-600">{upload.error}</p>
+                      )}
+
+                      {upload.debugInfo && upload.status !== 'error' && (
+                        <p className="mt-1 text-xs text-gray-400">{upload.debugInfo}</p>
+                      )}
                     </div>
-
-                    {/* Parsing Validation Bar */}
-                    {upload.columnScore > 0 && (
-                      <div className="mb-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-medium text-gray-600">Parsing Validation</span>
-                          <span className="text-xs font-bold text-gray-900">{upload.columnScore}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full transition ${
-                              upload.columnScore >= 80 ? 'bg-green-500' :
-                              upload.columnScore >= 50 ? 'bg-yellow-500' : 'bg-red-500'
-                            }`}
-                            style={{ width: `${upload.columnScore}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Progress Bar */}
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
-                      <div
-                        className={`h-1.5 rounded-full transition ${upload.status === 'processing' ? 'bg-blue-400 animate-pulse' : 'bg-teal-500'}`}
-                        style={{ width: `${upload.progress}%` }}
-                      />
-                    </div>
-
-                    {/* Preview of parsed data */}
-                    {upload.status === 'complete' && upload.type === 'Dashboard' && upload.parsedData?.dashboard && (
-                      <div className="mt-3 rounded-lg bg-teal-50 p-3 text-xs text-teal-800">
-                        <p className="font-semibold mb-1">Dashboard Data Preview:</p>
-                        <div className="grid grid-cols-2 gap-1">
-                          <div>Total Revenue: ${upload.parsedData.dashboard.totalRevenue.toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
-                          <div>Episodes: {upload.parsedData.dashboard.epsFinalised.reduce((a: number, b: number) => a + b, 0).toLocaleString()}</div>
-                          <div>Lab Admissions: {upload.parsedData.dashboard.admLab.reduce((a: number, b: number) => a + b, 0).toLocaleString()}</div>
-                          <div>Prescriptions: {upload.parsedData.dashboard.pharmacyRx.reduce((a: number, b: number) => a + b, 0).toLocaleString()}</div>
-                        </div>
-                      </div>
-                    )}
-                    {upload.status === 'complete' && upload.type === 'Location' && upload.parsedData?.location && (
-                      <div className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
-                        <p className="font-semibold mb-1">Location/Episode Data Preview:</p>
-                        <div className="grid grid-cols-2 gap-1">
-                          <div>Episodes: {(upload.parsedData.location.episodes || upload.rowCount).toLocaleString()}</div>
-                          <div>Doctors: {upload.parsedData.location.doctors?.length || 0}</div>
-                          <div>Revenue: ${(upload.parsedData.location.totalRevenue || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
-                          <div>Specialties: {Object.keys(upload.parsedData.location.specialties || {}).length}</div>
-                        </div>
-                      </div>
-                    )}
-                    {upload.status === 'complete' && upload.type === 'Claims' && upload.parsedData?.claims && (
-                      <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-                        <p className="font-semibold mb-1">Claims Data Preview:</p>
-                        <div className="grid grid-cols-2 gap-1">
-                          <div>Total Claims: {upload.parsedData.claims.totalClaims.toLocaleString()}</div>
-                          <div>Total Claimed: ${upload.parsedData.claims.totalClaimed.toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
-                        </div>
-                      </div>
-                    )}
-
-                    {upload.status === 'complete' && upload.type === 'Generic' && upload.genericData && (
-                      <div className="mt-3 rounded-lg bg-violet-50 p-3 text-xs text-violet-800">
-                        <p className="font-semibold mb-1">Generic Dataset Preview:</p>
-                        <div className="grid grid-cols-2 gap-1">
-                          <div>Rows: {upload.genericData.rowCount.toLocaleString()}</div>
-                          <div>Columns: {upload.genericData.schema.columnNames.length}</div>
-                          <div>Numeric: {upload.genericData.columnProfiles.filter(c => c.type === 'numeric').length}</div>
-                          <div>Categorical: {upload.genericData.columnProfiles.filter(c => c.type === 'categorical').length}</div>
-                        </div>
-                        <p className="mt-1 text-[10px] text-violet-600">Cols: {upload.genericData.schema.columnNames.slice(0, 8).join(', ')}{upload.genericData.schema.columnNames.length > 8 ? '...' : ''}</p>
-                      </div>
-                    )}
-
-                    {/* Duplicate file warning */}
-                    {upload.isDuplicate && upload.status === 'complete' && (
-                      <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex items-start gap-2">
-                        <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-semibold">Duplicate file detected</p>
-                          <p className="mt-0.5">This file has already been processed. It will be <strong>skipped</strong> to prevent double-counting. Remove it from the queue or upload a different file.</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {upload.status === 'error' && upload.error && (
-                      <p className="mt-2 text-xs text-red-600">{upload.error}</p>
-                    )}
-
-                    {upload.debugInfo && upload.status !== 'error' && (
-                      <p className="mt-1 text-xs text-gray-400">{upload.debugInfo}</p>
-                    )}
+                    <button
+                      onClick={() => handleRemoveUpload(upload.id)}
+                      className="ml-4 text-gray-400 hover:text-red-600 transition shrink-0"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleRemoveUpload(upload.id)}
-                    className="ml-4 text-gray-400 hover:text-red-600 transition shrink-0"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
                 </div>
+              ))}
+            </div>
+
+            {/* Action Bar */}
+            <div className="border-t border-gray-200 px-5 py-4 flex items-center justify-between gap-4">
+              <div className="text-sm text-gray-600">
+                <strong>{completedCount}</strong> file(s) ready to process
               </div>
-            ))}
+              <div className="flex gap-3">
+                <Button onClick={() => setUploads([])} variant="outline" size="sm">
+                  Clear All
+                </Button>
+                <Button
+                  onClick={handleProcessUploads}
+                  disabled={completedCount === 0 || processing}
+                  size="sm"
+                  className="gap-2"
+                >
+                  <Zap className="h-4 w-4" />
+                  Process {completedCount} File{completedCount !== 1 ? 's' : ''}
+                </Button>
+              </div>
+            </div>
           </div>
+        )}
 
-          {/* Action Bar */}
-          <div className="border-t border-gray-200 px-5 py-4 flex items-center justify-between gap-4">
-            <div className="text-sm text-gray-600">
-              <strong>{completedCount}</strong> file(s) ready to process
+        {/* Upload History — shows all files ingested for the current year */}
+        {existingUploads.length > 0 && (
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+              <Database className="h-5 w-5 text-gray-500" />
+              <div>
+                <h2 className="font-semibold text-gray-900">Data Store — {currentYear}</h2>
+                <p className="text-xs text-gray-500">{existingUploads.length} file(s) loaded. Dashboard replaces on re-upload; Location &amp; Claims append new rows.</p>
+              </div>
             </div>
-            <div className="flex gap-3">
-              <Button onClick={() => setUploads([])} variant="outline" size="sm">
-                Clear All
-              </Button>
-              <Button
-                onClick={handleProcessUploads}
-                disabled={completedCount === 0 || processing}
-                size="sm"
-                className="gap-2"
-              >
-                <Zap className="h-4 w-4" />
-                Process {completedCount} File{completedCount !== 1 ? 's' : ''}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Upload History — shows all files ingested for the current year */}
-      {existingUploads.length > 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-            <Database className="h-5 w-5 text-gray-500" />
-            <div>
-              <h2 className="font-semibold text-gray-900">Data Store — {currentYear}</h2>
-              <p className="text-xs text-gray-500">{existingUploads.length} file(s) loaded. Dashboard replaces on re-upload; Location &amp; Claims append new rows.</p>
-            </div>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {existingUploads.map((rec) => {
-              const catColor = rec.category === 'Dashboard' ? 'bg-teal-500' : rec.category === 'Location' ? 'bg-blue-500' : 'bg-amber-500';
-              return (
-                <div key={rec.id} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50 transition">
-                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${catColor}`} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 truncate">{rec.fileName}</p>
-                    <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
-                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{new Date(rec.uploadedAt).toLocaleString()}</span>
-                      <span>{rec.category}</span>
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${rec.action === 'append' ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}`}>{rec.action}</span>
-                      {rec.rowCount > 0 && <span>{rec.rowCount.toLocaleString()} rows</span>}
+            <div className="divide-y divide-gray-100">
+              {existingUploads.map((rec) => {
+                const catColor = rec.category === 'Dashboard' ? 'bg-teal-500' : rec.category === 'Location' ? 'bg-blue-500' : 'bg-amber-500';
+                return (
+                  <div key={rec.id} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50 transition">
+                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${catColor}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">{rec.fileName}</p>
+                      <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                        <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{new Date(rec.uploadedAt).toLocaleString()}</span>
+                        <span>{rec.category}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${rec.action === 'append' ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}`}>{rec.action}</span>
+                        {rec.rowCount > 0 && <span>{rec.rowCount.toLocaleString()} rows</span>}
+                      </div>
                     </div>
+                    <button
+                      onClick={() => removeUpload(currentYear, rec.id)}
+                      className="text-gray-400 hover:text-red-600 transition shrink-0"
+                      title="Remove this upload"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => removeUpload(currentYear, rec.id)}
-                    className="text-gray-400 hover:text-red-600 transition shrink-0"
-                    title="Remove this upload"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Supported Formats */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-3 h-3 rounded-full bg-teal-500" />
-            <h3 className="font-semibold text-gray-900">Dashboard CSV</h3>
+        {/* Supported Formats */}
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-3 h-3 rounded-full bg-teal-500" />
+              <h3 className="font-semibold text-gray-900">Dashboard CSV</h3>
+            </div>
+            <p className="text-xs text-gray-600 mb-2">RptManagementDashboard format — replaces on re-upload</p>
+            <p className="text-xs text-gray-500">Line 1: Facility name, Line 2: Report description with dates, Line 3: Column headers, Lines 4+: Section-based metric rows</p>
           </div>
-          <p className="text-xs text-gray-600 mb-2">RptManagementDashboard format — replaces on re-upload</p>
-          <p className="text-xs text-gray-500">Line 1: Facility name, Line 2: Report description with dates, Line 3: Column headers, Lines 4+: Section-based metric rows</p>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-3 h-3 rounded-full bg-blue-500" />
-            <h3 className="font-semibold text-gray-900">Location/Episode CSV</h3>
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-3 h-3 rounded-full bg-blue-500" />
+              <h3 className="font-semibold text-gray-900">Location/Episode CSV</h3>
+            </div>
+            <p className="text-xs text-gray-600 mb-2">CPTStatisticsLOC format — appends on re-upload</p>
+            <p className="text-xs text-gray-500">Patient-level data with columns: Episode, Patient Name, Medical Aid, Doctor, Specialty, ICD Code, CPT Code, LOS, etc.</p>
           </div>
-          <p className="text-xs text-gray-600 mb-2">CPTStatisticsLOC format — appends on re-upload</p>
-          <p className="text-xs text-gray-500">Patient-level data with columns: Episode, Patient Name, Medical Aid, Doctor, Specialty, ICD Code, CPT Code, LOS, etc.</p>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-3 h-3 rounded-full bg-amber-500" />
-            <h3 className="font-semibold text-gray-900">Claims CSV</h3>
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-3 h-3 rounded-full bg-amber-500" />
+              <h3 className="font-semibold text-gray-900">Claims CSV</h3>
+            </div>
+            <p className="text-xs text-gray-600 mb-2">APAC/EDI claims format — appends on re-upload</p>
+            <p className="text-xs text-gray-500">Claims records with: Claim ID, Status, Amount, Scheme, Doctor, Date, Rejection Reason, etc.</p>
           </div>
-          <p className="text-xs text-gray-600 mb-2">APAC/EDI claims format — appends on re-upload</p>
-          <p className="text-xs text-gray-500">Claims records with: Claim ID, Status, Amount, Scheme, Doctor, Date, Rejection Reason, etc.</p>
         </div>
       </div>
-    </div>
+    </RoleGuard>
   );
 }

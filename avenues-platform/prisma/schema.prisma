@@ -102,3 +102,24 @@ model DataUpload {
   @@index([fileHash])
   @@map("data_uploads")
 }
+
+// ─── Audit Log ───────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // UPLOAD | LOGIN | EXPORT | DATA_WRITE | WEBHOOK | SETTINGS_CHANGE
+  category  String?  // Dashboard | Location | Claims | Auth | System
+  details   String?  // Human-readable description
+  metadata  Json?    // Additional structured data
+  userId    String?
+  userName  String?
+  orgId     String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

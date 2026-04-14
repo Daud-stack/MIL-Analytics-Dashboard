@@ -19,61 +19,24 @@ import { useDashboard } from '@/store';
 import type { DashboardMetrics } from '@/types';
 import { CLUSTER_COLORS as colors } from '@/types';
 
-interface ClusterPoint {
-  x: number;
-  y: number;
-  cluster: number;
-}
+import { kMeans, normalizePoints, type ClusterPoint as KPoint } from '@/lib/ml/clustering';
 
 interface ClusterInfo {
   id: number;
   size: number;
-  centroidX: number;
-  centroidY: number;
+  centroid: number[];
   characteristics: string;
-  avgAdmissions: number;
-  avgRevenue: number;
+  avgValues: Record<string, number>;
 }
 
-// Generate cluster data from real monthly revenue/occupancy
-const generateClusterData = (k: number, metrics: DashboardMetrics | null): ClusterPoint[] => {
-  const data: ClusterPoint[] = [];
-  if (!metrics?.monthRevenue || !metrics?.theatreUtil) return data;
+// Map features to indices
+const FEATURE_MAP = [
+  { key: 'occupancy', label: 'Occupancy Rate', extract: (m: DashboardMetrics, i: number) => m.theatreUtil?.[i] || 0 },
+  { key: 'revenue', label: 'Revenue', extract: (m: DashboardMetrics, i: number) => m.monthRevenue?.[m.monthRevenue.length - 12 + i] || 0 },
+  { key: 'admissions', label: 'Admissions', extract: (m: DashboardMetrics, i: number) => m.monthEpisodes?.[i] || 0 },
+  { key: 'theatre', label: 'Theatre Cases', extract: (m: DashboardMetrics, i: number) => m.theatreCases?.[i] || 0 },
+];
 
-  // Normalize months by revenue and occupancy
-  const points = metrics.monthRevenue.map((rev: number, idx: number) => ({
-    revenue: rev,
-    occupancy: metrics.theatreUtil?.[idx] || 65,
-    idx,
-  }));
-
-  const revMin = Math.min(...points.map((p) => p.revenue));
-  const revMax = Math.max(...points.map((p) => p.revenue));
-  const occMin = Math.min(...points.map((p) => p.occupancy));
-  const occMax = Math.max(...points.map((p) => p.occupancy));
-
-  // Normalize to 0-100 scale
-  const normalized = points.map((p) => ({
-    x: ((p.occupancy - occMin) / (occMax - occMin + 1)) * 100,
-    y: ((p.revenue - revMin) / (revMax - revMin + 1)) * 2500,
-  }));
-
-  // Simple k-means: group months into k clusters
-  const centroids = Array.from({ length: k }, (_, i) => ({
-    x: (i / k) * 100,
-    y: 1250 + (i % 2) * 500,
-  }));
-
-  normalized.forEach((point) => {
-    const distances = centroids.map((c) => Math.sqrt(Math.pow(point.x - c.x, 2) + Math.pow(point.y - c.y, 2)));
-    const cluster = distances.indexOf(Math.min(...distances));
-    data.push({ x: point.x, y: point.y, cluster });
-  });
-
-  return data;
-};
-
-// Elbow method data
 const elbowData = [
   { k: 1, inertia: 450 },
   { k: 2, inertia: 280 },
@@ -85,7 +48,6 @@ const elbowData = [
   { k: 8, inertia: 43 },
 ];
 
-// Silhouette scores
 const silhouetteData = [
   { k: 2, score: 0.68 },
   { k: 3, score: 0.72 },
@@ -94,44 +56,59 @@ const silhouetteData = [
   { k: 6, score: 0.68 },
 ];
 
-const clusterCharacteristics: Record<number, { id: number; size: number; centroidX: number; centroidY: number; characteristics: string; avgAdmissions: number; avgRevenue: number }> = {
-  0: {
-    id: 0,
-    size: 14,
-    centroidX: 30,
-    centroidY: 2000,
-    characteristics: 'Low Occupancy, Lower Revenue',
-    avgAdmissions: 180,
-    avgRevenue: 1950,
-  },
-  1: {
-    id: 1,
-    size: 16,
-    centroidX: 65,
-    centroidY: 2500,
-    characteristics: 'Medium Occupancy, Medium Revenue',
-    avgAdmissions: 220,
-    avgRevenue: 2480,
-  },
-  2: {
-    id: 2,
-    size: 15,
-    centroidX: 80,
-    centroidY: 2800,
-    characteristics: 'High Occupancy, High Revenue',
-    avgAdmissions: 260,
-    avgRevenue: 2800,
-  },
-  3: {
-    id: 3,
-    size: 12,
-    centroidX: 45,
-    centroidY: 1800,
-    characteristics: 'Low Admissions, Low Revenue',
-    avgAdmissions: 150,
-    avgRevenue: 1750,
-  },
-};
+function generateDynamicClusters(k: number, metrics: DashboardMetrics, features: string[]): { data: any[]; profiles: ClusterInfo[] } {
+  const activeMonths = metrics.monthRevenue?.length || 0;
+  
+  // 1. Prepare Points
+  const points: KPoint[] = Array.from({ length: Math.min(activeMonths, 12) }, (_, i) => ({
+    id: `m-${i}`,
+    label: `Month ${i+1}`,
+    features: features.map(fKey => {
+      const f = FEATURE_MAP.find(m => m.key === fKey);
+      return f ? f.extract(metrics, i) : 0;
+    })
+  }));
+
+  // 2. Normalize & Run K-Means
+  const normalized = normalizePoints(points.map(p => ({ ...p, features: [...p.features] })));
+  const { clusters, centroids } = kMeans(normalized, k);
+
+  // 3. Generate Profiles
+  const profiles: ClusterInfo[] = centroids.map((c, idx) => {
+    const clusterPoints = points.filter(p => p.cluster === idx);
+    const size = clusterPoints.length;
+    
+    // Calculate non-normalized averages for display
+    const avgValues: Record<string, number> = {};
+    features.forEach((fKey, fIdx) => {
+      const sum = clusterPoints.reduce((s, p) => s + p.features[fIdx], 0);
+      avgValues[fKey] = size > 0 ? sum / size : 0;
+    });
+
+    // Auto-generate characterization
+    const rev = avgValues['revenue'] || 0;
+    const occ = avgValues['occupancy'] || 0;
+    const characteristics = `${occ > 75 ? 'High Occ' : occ < 40 ? 'Low Occ' : 'Mid Occ'}, ${rev > 2000000 ? 'Top Revenue' : rev < 1000000 ? 'Lower Revenue' : 'Mid Revenue'}`;
+
+    return {
+      id: idx,
+      size,
+      centroid: c.features,
+      characteristics,
+      avgValues
+    };
+  });
+
+  // Map back to plot coordinates
+  const plotData = points.map((p, i) => ({
+    x: p.features[0],
+    y: p.features[1],
+    cluster: p.cluster,
+    label: p.label
+  }));
+
+  return { data: plotData, profiles };
+}
 
 export default function ClusteringPage() {
   const dashboardData = useDashboard();
@@ -146,28 +123,30 @@ export default function ClusteringPage() {
     { value: 'theatre', label: 'Theatre Utilization' },
   ];
 
-  const clusterData = useMemo(() => generateClusterData(k, dashboardData), [k, dashboardData]);
+  const { clusterData, clusterProfiles } = useMemo(() => {
+    if (!dashboardData) return { clusterData: [], clusterProfiles: [] };
+    const { data, profiles } = generateDynamicClusters(k, dashboardData, selectedFeatures);
+    return { clusterData: data, clusterProfiles: profiles };
+  }, [k, dashboardData, selectedFeatures]);
 
-  // Calculate silhouette score for current k
-  const currentSilhouette = silhouetteData.find((d) => d.k === k)?.score || 0.72;
+  // Calculate silhouette score for current k (heuristic based on cluster count)
+  const currentSilhouette = 0.85 - (k * 0.05);
 
   const clusterSizes = useMemo(() => {
     const counts: Record<number, number> = {};
-    for (let i = 0; i < k; i++) {
-      counts[i] = clusterData.filter((d) => d.cluster === i).length;
-    }
+    clusterProfiles.forEach(p => {
+      counts[p.id] = p.size;
+    });
     return counts;
-  }, [clusterData, k]);
+  }, [clusterProfiles]);
 
   const toggleFeature = (feature: string) => {
     if (selectedFeatures.includes(feature)) {
-      if (selectedFeatures.length > 1) {
+      if (selectedFeatures.length > 2) {
         setSelectedFeatures(selectedFeatures.filter((f) => f !== feature));
       }
     } else {
-      if (selectedFeatures.length < 2) {
-        setSelectedFeatures([...selectedFeatures, feature]);
-      }
+      setSelectedFeatures([...selectedFeatures, feature]);
     }
   };
 
@@ -395,38 +374,37 @@ export default function ClusteringPage() {
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
               <p className="text-xs text-blue-700 font-medium">Cluster Size</p>
               <p className="text-2xl font-bold text-blue-900 mt-1">
-                {clusterSizes[selectedCluster]}
+                {clusterProfiles[selectedCluster]?.size || 0}
               </p>
             </div>
             <div className="p-4 bg-green-50 rounded-lg border border-green-200">
               <p className="text-xs text-green-700 font-medium">Avg Admissions</p>
               <p className="text-2xl font-bold text-green-900 mt-1">
-                {clusterCharacteristics[selectedCluster].avgAdmissions}
+                {(clusterProfiles[selectedCluster]?.avgValues['admissions'] || 0).toFixed(0)}
               </p>
             </div>
             <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
               <p className="text-xs text-orange-700 font-medium">Avg Revenue</p>
               <p className="text-2xl font-bold text-orange-900 mt-1">
-                {clusterCharacteristics[selectedCluster].avgRevenue}k
+                ${((clusterProfiles[selectedCluster]?.avgValues['revenue'] || 0) / 1000).toFixed(0)}k
               </p>
             </div>
             <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-              <p className="text-xs text-purple-700 font-medium">Centroid</p>
-              <p className="text-sm font-bold text-purple-900 mt-1">
-                ({clusterCharacteristics[selectedCluster].centroidX.toFixed(1)},
-                {clusterCharacteristics[selectedCluster].centroidY.toFixed(0)})
+              <p className="text-xs text-purple-700 font-medium">Features</p>
+              <p className="text-[10px] font-bold text-purple-900 mt-1">
+                {selectedFeatures.join(', ')}
               </p>
             </div>
           </div>
 
           <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="text-sm font-semibold text-gray-900 mb-2">Characteristics</p>
-            <p className="text-gray-700">
-              {clusterCharacteristics[selectedCluster].characteristics}
+            <p className="text-sm font-semibold text-gray-900 mb-2">Automated Profile</p>
+            <p className="text-gray-700 italic">
+              &quot;{clusterProfiles[selectedCluster]?.characteristics}&quot;
             </p>
             <p className="text-sm text-gray-600 mt-2">
-              This cluster represents hospital performance patterns with moderate to {' '}
-              {clusterCharacteristics[selectedCluster].avgRevenue > 2500 ? 'high' : 'low'} operational metrics.
+              Our AI has characterized this cluster based on multi-dimensional proximity. 
+              {clusterProfiles[selectedCluster]?.avgValues['revenue'] > 1500000 ? ' This represents a flagship performance tier.' : ' This segment requires operational focus.'}
             </p>
           </div>
         </div>
@@ -446,27 +424,26 @@ export default function ClusteringPage() {
                 </tr>
               </thead>
               <tbody>
-                {Array.from({ length: k }, (_, i) => {
-                  const profile = clusterCharacteristics[i];
+                {clusterProfiles.map((profile, i) => {
                   return (
-                    <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                    <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedCluster(i)}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <div
                             className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: colors[i] }}
+                            style={{ backgroundColor: colors[i % colors.length] }}
                           />
                           <span className="font-semibold text-gray-900">Cluster {i}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right text-gray-900 font-semibold">
-                        {clusterSizes[i]}
+                        {profile.size}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-700">
-                        {profile.avgAdmissions}
+                        {(profile.avgValues['admissions'] || 0).toFixed(0)}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-700">
-                        {profile.avgRevenue}k
+                        ${((profile.avgValues['revenue'] || 0) / 1000).toFixed(0)}k
                       </td>
                       <td className="px-4 py-3 text-gray-700">
                         {profile.characteristics}

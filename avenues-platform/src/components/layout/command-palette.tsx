@@ -1,13 +1,16 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Command } from 'cmdk';
 import { useRouter } from 'next/navigation';
-import { Search, LayoutDashboard, FileText, Activity, Users, DollarSign, BrainCircuit, Syringe } from 'lucide-react';
+import { Search, LayoutDashboard, FileText, Activity, Users, DollarSign, BrainCircuit, Syringe, Stethoscope, Hash, Settings, Shield } from 'lucide-react';
+import { useStore } from '@/store';
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+  const years = useStore((state) => state.years);
+  const currentYear = useStore((state) => state.currentYear);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -20,6 +23,62 @@ export function CommandPalette() {
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
   }, []);
+
+  // Build searchable data items from store
+  const dataItems = useMemo(() => {
+    const data = years.get(currentYear);
+    const items: { type: string; label: string; detail: string; action: () => void }[] = [];
+
+    // Doctors
+    if (data?.location?.doctors) {
+      data.location.doctors.slice(0, 20).forEach((doc) => {
+        items.push({
+          type: 'Doctor',
+          label: doc.name,
+          detail: `${doc.specialty} • ${doc.episodes} episodes`,
+          action: () => router.push('/doctors'),
+        });
+      });
+    }
+
+    // ICD Codes
+    if (data?.location?.icdCodes) {
+      Object.entries(data.location.icdCodes).slice(0, 15).forEach(([code, info]) => {
+        items.push({
+          type: 'ICD Code',
+          label: `${code} — ${info.desc}`,
+          detail: `${info.count} occurrences`,
+          action: () => router.push('/diagnoses'),
+        });
+      });
+    }
+
+    // Specialties
+    if (data?.location?.specialties) {
+      Object.entries(data.location.specialties).slice(0, 10).forEach(([spec, count]) => {
+        items.push({
+          type: 'Specialty',
+          label: spec,
+          detail: `${count} episodes`,
+          action: () => router.push('/search'),
+        });
+      });
+    }
+
+    // Claims schemes
+    if (data?.claims?.byScheme) {
+      Object.entries(data.claims.byScheme).slice(0, 10).forEach(([scheme, info]) => {
+        items.push({
+          type: 'Claim Scheme',
+          label: scheme,
+          detail: `${info.submitted} submitted, ${info.approved} approved`,
+          action: () => router.push('/claims'),
+        });
+      });
+    }
+
+    return items;
+  }, [years, currentYear, router]);
 
   const runCommand = (command: () => void) => {
     setOpen(false);
@@ -41,19 +100,19 @@ export function CommandPalette() {
             <Command.Input 
               autoFocus
               className="flex-1 h-14 bg-transparent border-none focus:outline-none text-slate-900 dark:text-white placeholder-slate-400 text-lg"
-              placeholder="Search reports, metrics, or views..." 
+              placeholder="Search views, doctors, diagnoses..." 
             />
             <div className="text-xs text-slate-400 font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">
               ESC
             </div>
           </div>
           
-          <Command.List className="max-h-[300px] overflow-y-auto p-2">
+          <Command.List className="max-h-[400px] overflow-y-auto p-2">
             <Command.Empty className="py-6 text-center text-sm text-slate-500">
               No results found.
             </Command.Empty>
 
-            <Command.Group heading="Views" className="text-xs font-semibold text-slate-500 px-2 mb-2 mt-2">
+            <Command.Group heading="Pages" className="text-xs font-semibold text-slate-500 px-2 mb-2 mt-2">
               <Command.Item 
                 onSelect={() => runCommand(() => router.push('/dashboard'))}
                 className="flex items-center px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer text-slate-900 dark:text-gray-100 aria-selected:bg-slate-100 dark:aria-selected:bg-slate-800"
@@ -80,7 +139,7 @@ export function CommandPalette() {
                 className="flex items-center px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer text-slate-900 dark:text-gray-100 aria-selected:bg-slate-100 dark:aria-selected:bg-slate-800"
               >
                 <FileText className="h-4 w-4 mr-3 text-purple-500" />
-                Medical Aid Claims (APAC)
+                Medical Aid Claims
               </Command.Item>
               <Command.Item 
                 onSelect={() => runCommand(() => router.push('/pharmacy'))}
@@ -89,24 +148,51 @@ export function CommandPalette() {
                 <Syringe className="h-4 w-4 mr-3 text-pink-500" />
                 Pharmacy Dispensing
               </Command.Item>
-            </Command.Group>
-
-            <Command.Group heading="Data Tools" className="text-xs font-semibold text-slate-500 px-2 mb-2 mt-4">
               <Command.Item 
                 onSelect={() => runCommand(() => router.push('/forecast'))}
                 className="flex items-center px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer text-slate-900 dark:text-gray-100 aria-selected:bg-slate-100 dark:aria-selected:bg-slate-800"
               >
                 <BrainCircuit className="h-4 w-4 mr-3 text-indigo-500" />
-                Machine Learning Forecasts
+                ML Forecasts
               </Command.Item>
               <Command.Item 
-                onSelect={() => runCommand(() => router.push('/patients'))}
+                onSelect={() => runCommand(() => router.push('/settings'))}
                 className="flex items-center px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer text-slate-900 dark:text-gray-100 aria-selected:bg-slate-100 dark:aria-selected:bg-slate-800"
               >
-                <Users className="h-4 w-4 mr-3 text-teal-500" />
-                Patient Demographics
+                <Settings className="h-4 w-4 mr-3 text-slate-500" />
+                Settings
+              </Command.Item>
+              <Command.Item 
+                onSelect={() => runCommand(() => router.push('/audit'))}
+                className="flex items-center px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer text-slate-900 dark:text-gray-100 aria-selected:bg-slate-100 dark:aria-selected:bg-slate-800"
+              >
+                <Shield className="h-4 w-4 mr-3 text-slate-500" />
+                Audit Trail
               </Command.Item>
             </Command.Group>
+
+            {/* Dynamic Data Search */}
+            {dataItems.length > 0 && (
+              <Command.Group heading="Data" className="text-xs font-semibold text-slate-500 px-2 mb-2 mt-4">
+                {dataItems.map((item, i) => (
+                  <Command.Item
+                    key={`data-${i}`}
+                    value={`${item.type} ${item.label} ${item.detail}`}
+                    onSelect={() => runCommand(item.action)}
+                    className="flex items-center px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer text-slate-900 dark:text-gray-100 aria-selected:bg-slate-100 dark:aria-selected:bg-slate-800"
+                  >
+                    {item.type === 'Doctor' && <Stethoscope className="h-4 w-4 mr-3 text-blue-400" />}
+                    {item.type === 'ICD Code' && <Hash className="h-4 w-4 mr-3 text-green-400" />}
+                    {item.type === 'Specialty' && <Users className="h-4 w-4 mr-3 text-orange-400" />}
+                    {item.type === 'Claim Scheme' && <FileText className="h-4 w-4 mr-3 text-purple-400" />}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm truncate">{item.label}</div>
+                      <div className="text-xs text-slate-400 truncate">{item.type} • {item.detail}</div>
+                    </div>
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            )}
           </Command.List>
         </Command>
       </div>
