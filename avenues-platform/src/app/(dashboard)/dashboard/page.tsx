@@ -32,13 +32,17 @@ const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
         <p className="text-sm font-medium text-gray-900">{label}</p>
-        {payload.map((entry, index: number) => (
-          <p key={index} style={{ color: entry.color }} className="text-sm">
-            {entry.name}: {typeof entry.value === 'number' && String(entry.dataKey).toLowerCase().includes('rev')
-              ? formatCurrency(Number(entry.value ?? 0))
-              : formatNumber(Number(entry.value ?? 0))}
-          </p>
-        ))}
+        {payload.map((entry, index: number) => {
+          const rawValue = Number(entry.value ?? 0);
+          const safeValue = Number.isFinite(rawValue) ? rawValue : 0;
+          return (
+            <p key={index} style={{ color: entry.color }} className="text-sm">
+              {entry.name}: {String(entry.dataKey).toLowerCase().includes('rev')
+                ? formatCurrency(safeValue)
+                : formatNumber(safeValue)}
+            </p>
+          );
+        })}
       </div>
     );
   }
@@ -327,18 +331,27 @@ export default function DashboardPage() {
   else if (granularity === 'year') periodLabel = 'Year';
 
   // ── Prepare chart data using drill-down ──
-  const revenueData = revenueDrill.labels.map((label, i) => ({
-    period: label,
-    Revenue: revenueDrill.values[i],
-  }));
+  const revenueData = revenueDrill.labels.map((label, i) => {
+    const val = Number(revenueDrill.values[i] ?? 0);
+    return {
+      period: label,
+      Revenue: Number.isFinite(val) ? val : 0,
+    };
+  });
 
-  const admissionsData = casualtyDrill.labels.map((label, i) => ({
-    period: label,
-    Casualty: casualtyDrill.values[i],
-    'Day Patient': dayDrill.values[i],
-    'In-Patient': inpatientDrill.values[i],
-    Laboratory: labDrill.values[i],
-  }));
+  const admissionsData = casualtyDrill.labels.map((label, i) => {
+    const getVal = (v: number | undefined) => {
+      const n = Number(v ?? 0);
+      return Number.isFinite(n) ? n : 0;
+    };
+    return {
+      period: label,
+      Casualty: getVal(casualtyDrill.values[i]),
+      'Day Patient': getVal(dayDrill.values[i]),
+      'In-Patient': getVal(inpatientDrill.values[i]),
+      Laboratory: getVal(labDrill.values[i]),
+    };
+  });
 
   const paymentsData = depositsDrill.labels.map((label, i) => ({
     period: label,

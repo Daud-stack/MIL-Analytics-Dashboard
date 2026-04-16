@@ -12,10 +12,20 @@ import { DashboardMetrics, LocationData, ClaimsMetrics, UploadRecord, GenericDat
 const MONTH_COUNT = 12;
 
 export const addArrays = (a: number[] | undefined, b: number[] | undefined): number[] =>
-  Array.from({ length: MONTH_COUNT }, (_, i) => ((a?.[i]) || 0) + ((b?.[i]) || 0));
+  Array.from({ length: MONTH_COUNT }, (_, i) => {
+    const valA = a?.[i] ?? 0;
+    const valB = b?.[i] ?? 0;
+    const sum = (Number.isFinite(valA) ? valA : 0) + (Number.isFinite(valB) ? valB : 0);
+    return Number.isFinite(sum) ? sum : 0;
+  });
 
 export const maxArrays = (a: number[] | undefined, b: number[] | undefined): number[] =>
-  Array.from({ length: MONTH_COUNT }, (_, i) => Math.max((a?.[i]) || 0, (b?.[i]) || 0));
+  Array.from({ length: MONTH_COUNT }, (_, i) => {
+    const valA = a?.[i] ?? 0;
+    const valB = b?.[i] ?? 0;
+    const max = Math.max(Number.isFinite(valA) ? valA : 0, Number.isFinite(valB) ? valB : 0);
+    return Number.isFinite(max) ? max : 0;
+  });
 
 export const incrementCountMap = (
   a: Record<string, number> | undefined,

@@ -32,7 +32,7 @@ const MONTH_COUNT = 12;
 function normalizeSeries(values?: number[]): number[] {
   return Array.from({ length: MONTH_COUNT }, (_, idx) => {
     const value = values?.[idx];
-    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+    return Number.isFinite(value) ? Number(value) : 0;
   });
 }
 
@@ -170,11 +170,21 @@ export const useStore = create<StoreState>()(
           // HELPER: Add two 12-element monthly arrays element-wise
           // ──────────────────────────────────────────────────────
           const addArrays = (a: number[] | undefined, b: number[] | undefined): number[] =>
-            Array.from({ length: 12 }, (_, i) => ((a?.[i]) || 0) + ((b?.[i]) || 0));
+            Array.from({ length: 12 }, (_, i) => {
+              const valA = a?.[i] ?? 0;
+              const valB = b?.[i] ?? 0;
+              const sum = (Number.isFinite(valA) ? valA : 0) + (Number.isFinite(valB) ? valB : 0);
+              return Number.isFinite(sum) ? sum : 0;
+            });
 
           // Take element-wise max (dedup-safe for re-uploads of same file)
           const maxArrays = (a: number[] | undefined, b: number[] | undefined): number[] =>
-            Array.from({ length: 12 }, (_, i) => Math.max((a?.[i]) || 0, (b?.[i]) || 0));
+            Array.from({ length: 12 }, (_, i) => {
+              const valA = a?.[i] ?? 0;
+              const valB = b?.[i] ?? 0;
+              const max = Math.max(Number.isFinite(valA) ? valA : 0, Number.isFinite(valB) ? valB : 0);
+              return Number.isFinite(max) ? max : 0;
+            });
 
           // Merge Record<string, number> maps by incrementing counts
           const incrementCountMap = (
@@ -183,7 +193,10 @@ export const useStore = create<StoreState>()(
           ): Record<string, number> => {
             const result = { ...(a || {}) };
             for (const [k, v] of Object.entries(b || {})) {
-              result[k] = (result[k] || 0) + v;
+              const valA = result[k] ?? 0;
+              const valB = v ?? 0;
+              const sum = (Number.isFinite(valA) ? valA : 0) + (Number.isFinite(valB) ? valB : 0);
+              result[k] = Number.isFinite(sum) ? sum : 0;
             }
             return result;
           };
