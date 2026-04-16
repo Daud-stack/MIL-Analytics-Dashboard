@@ -27,6 +27,7 @@ interface FileUpload {
   debugInfo?: string;
   fileHash?: string;             // SHA-256 hash for duplicate prevention
   isDuplicate?: boolean;         // true if this file was already processed
+  forceProcess?: boolean;        // true if user wants to bypass duplicate check
 }
 
 /** Compute SHA-256 hex digest of a string using Web Crypto API */
@@ -135,20 +136,25 @@ function detectAndParse(csvText: string, manualYear: number | null): {
 
   // ====== STRATEGY 2: Claims CSV Detection ======
   // Claims CSVs have claim-specific columns (Claim Date, Claim Value, EDI Status, Amount Paid).
-  // Must be checked BEFORE Location because both share "Episode" and "Medical Aid" columns.
-  const claimsSignals = [
-    firstLine.includes('Claim Date'),
-    firstLine.includes('Claim Value'),
-    firstLine.includes('EDI Status'),
-    firstLine.includes('Amount Paid'),
-    firstLine.toLowerCase().includes('apac'),
-    firstLine.toLowerCase().includes('rejection'),
-    allText.includes('claim_id') || allText.includes('claim number'),
-  ].filter(Boolean).length;
+  // Check the first 10 lines for these keywords, as files may have report headers.
+  const topLines = lines.slice(0, 10);
+  const claimsSignals = topLines.some(l => {
+    const lower = l.toLowerCase();
+    return (
+      lower.includes('claim date') ||
+      lower.includes('claim value') ||
+      lower.includes('edi status') ||
+      lower.includes('amount paid') ||
+      lower.includes('apac') ||
+      lower.includes('rejection')
+    );
+  });
 
-  const isClaims = claimsSignals >= 2 ||
-    (firstLine.toLowerCase().includes('claim') && firstLine.toLowerCase().includes('edi')) ||
-    (firstLine.toLowerCase().includes('claim') && firstLine.toLowerCase().includes('amount paid'));
+  const allTextLower = allText.toLowerCase();
+  const isClaims = claimsSignals ||
+    (allTextLower.includes('claim date') && allTextLower.includes('edi status')) ||
+    (allTextLower.includes('claim value') && allTextLower.includes('amount paid')) ||
+    (allTextLower.includes('apac') && allTextLower.includes('status'));
 
   if (isClaims) {
     try {
@@ -439,7 +445,7 @@ export default function UploadPage() {
 
       sorted.forEach(upload => {
         // Skip duplicates that the user hasn't explicitly re-confirmed
-        if (upload.isDuplicate) {
+        if (upload.isDuplicate && !upload.forceProcess) {
           console.log(`[Upload] Skipping duplicate file: ${upload.file.name}`);
           return;
         }
@@ -688,10 +694,53 @@ export default function UploadPage() {
                             Year: {upload.year} · {upload.rowCount} rows
                           </p>
                         </div>
-                        {upload.status === 'complete' && <CheckCircle className="h-5 w-5 text-green-600 ml-auto shrink-0" />}
+                        {upload.status === 'complete' && !upload.isDuplicate && <CheckCircle className="h-5 w-5 text-green-600 ml-auto shrink-0" />}
+                        {upload.status === 'complete' && upload.isDuplicate && <Info className="h-5 w-5 text-blue-500 ml-auto shrink-0" />}
                         {upload.status === 'error' && <AlertCircle className="h-5 w-5 text-red-600 ml-auto shrink-0" />}
                         {upload.status === 'processing' && <RefreshCw className="h-5 w-5 text-blue-500 ml-auto shrink-0 animate-spin" />}
                       </div>
+
+                      {/* Duplicate Warning */}
+                      {upload.isDuplicate && (
+                        <div className="mb-3 rounded-lg bg-blue-50 border border-blue-200 p-3 flex items-start gap-3">
+                          <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="text-[11px] font-medium text-blue-800">
+                              Duplicate content detected. This file is already in the data store.
+                            </p>
+                            <div className="mt-2">
+                              <Button
+                                size="xs"
+                                variant={upload.forceProcess ? "default" : "outline"}
+                                className={`h-7 text-[10px] ${upload.forceProcess ? 'bg-blue-600' : 'text-blue-700 border-blue-300'}`}
+                                onClick={() => {
+                                  setUploads(prev => prev.map(u => u.id === upload.id ? { ...u, forceProcess: !u.forceProcess } : u));
+                                }}
+                              >
+                                {upload.forceProcess ? 'Process Anyway (Enabled)' : 'Process Anyway'}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Error Message */}
+                      {upload.status === 'error' && (
+                        <div className="mb-3 rounded-lg bg-red-50 border border-red-200 p-3 flex items-start gap-3">
+                          <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="text-xs font-semibold text-red-800">Parsing Error</p>
+                            <p className="text-[11px] text-red-600 mt-0.5 leading-relaxed">
+                              {upload.error || 'Failed to detect data format.'}
+                            </p>
+                            {upload.debugInfo && (
+                              <div className="mt-2 p-2 bg-red-100/50 rounded text-[9px] font-mono text-red-700 overflow-x-auto">
+                                {upload.debugInfo}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Parsing Validation Bar */}
                       {upload.columnScore > 0 && (

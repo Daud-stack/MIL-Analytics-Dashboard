@@ -25,6 +25,7 @@ const LOCATION_KEYWORDS = [
 const CLAIMS_KEYWORDS = [
   'claim', 'approved', 'rejected', 'pending', 'processing',
   'scheme', 'rejection', 'edi', 'apac', 'amount', 'doctor',
+  'funder', 'medical aid', 'rpt', 'value', 'claimed',
 ];
 
 // ===== UTILITY FUNCTIONS =====
@@ -1258,12 +1259,34 @@ export function parseLocationCSV(csvText: string): YearData {
 
 /**
  * Parse Claims CSV (APAC/EDI format)
- *
- * Handles various claims CSV formats with columns like:
- * Claim ID/Number, Status, Amount, Scheme, Doctor, Date, Rejection Reason, etc.
+ * Handles leading junk/noise in report files by scanning for the header row.
  */
 export function parseClaimsCSV(csvText: string): YearData {
-  const result = Papa.parse(csvText, {
+  const lines = csvText.split('\n');
+  let headerRowIndex = 0;
+
+  // Scan first 15 lines for the real header row (most keyword matches)
+  const scanLimit = Math.min(lines.length, 15);
+  let bestRow = 0;
+  let maxMatches = 0;
+
+  for (let i = 0; i < scanLimit; i++) {
+    const lower = lines[i].toLowerCase();
+    const matches = CLAIMS_KEYWORDS.filter(kw => lower.includes(kw.toLowerCase())).length;
+    if (matches > maxMatches) {
+      maxMatches = matches;
+      bestRow = i;
+    }
+  }
+
+  // If we found a strong header row (at least 2 matches), skip preceding junk
+  let cleanCsv = csvText;
+  if (maxMatches >= 2 && bestRow > 0) {
+    console.log(`[Claims Parser] Skipping ${bestRow} junk lines before headers...`);
+    cleanCsv = lines.slice(bestRow).join('\n');
+  }
+
+  const result = Papa.parse(cleanCsv, {
     header: true,
     skipEmptyLines: true,
     dynamicTyping: false,
@@ -1297,16 +1320,16 @@ export function parseClaimsCSV(csvText: string): YearData {
     return null;
   };
 
-  const colStatus = findCol(['edi status', 'status']);
-  const colClaimValue = findCol(['claim value', 'claimed']);
-  const colAmountPaid = findCol(['amount paid', 'paid']);
-  const colAmount = colClaimValue || findCol(['amount', 'total']);
-  const colScheme = findCol(['medical aid', 'scheme', 'funder']);
-  const colDoctor = findCol(['doctor', 'provider']);
-  const colClaimDate = findCol(['claim date']);
-  const colDate = colClaimDate || findCol(['discharge date', 'date', 'submitted']);
-  const colReason = findCol(['reason', 'rejection', 'description']);
-  const colEpisode = findCol(['episode']);
+  const colStatus = findCol(['edi status', 'status', 'state', 'stage']);
+  const colClaimValue = findCol(['claim value', 'claimed', 'bill amount', 'gross']);
+  const colAmountPaid = findCol(['amount paid', 'paid', 'remittance', 'net']);
+  const colAmount = colClaimValue || findCol(['amount', 'total', 'value']);
+  const colScheme = findCol(['medical aid', 'scheme', 'funder', 'payer', 'insurer']);
+  const colDoctor = findCol(['doctor', 'provider', 'practitioner', 'referring']);
+  const colClaimDate = findCol(['claim date', 'submission date']);
+  const colDate = colClaimDate || findCol(['discharge date', 'date', 'submitted', 'processed']);
+  const colReason = findCol(['reason', 'rejection', 'description', 'message', 'comment']);
+  const colEpisode = findCol(['episode', 'visit', 'account']);
 
   const metrics: ClaimsMetrics = {
     year,
