@@ -710,7 +710,7 @@ export default function UploadPage() {
                             </p>
                             <div className="mt-2">
                               <Button
-                                size="xs"
+                                size="sm"
                                 variant={upload.forceProcess ? "default" : "outline"}
                                 className={`h-7 text-[10px] ${upload.forceProcess ? 'bg-blue-600' : 'text-blue-700 border-blue-300'}`}
                                 onClick={() => {
