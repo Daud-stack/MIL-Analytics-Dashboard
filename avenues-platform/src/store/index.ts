@@ -127,6 +127,128 @@ function normalizeDashboardMetrics(metrics: DashboardMetrics | null): DashboardM
   };
 }
 
+/**
+ * Sum multiple DashboardMetrics objects into one.
+ * Used for aggregating snapshots from different files.
+ */
+function sumDashboardMetrics(snapshots: Record<string, DashboardMetrics>, year: number): DashboardMetrics | null {
+  const keys = Object.keys(snapshots);
+  if (keys.length === 0) return null;
+  if (keys.length === 1) return snapshots[keys[0]];
+
+  // Identity helpers
+  const MONTH_COUNT = 12;
+  const add = (a: number[] | undefined, b: number[] | undefined): number[] =>
+    Array.from({ length: 12 }, (_, i) => {
+      const valA = a?.[i] ?? 0;
+      const valB = b?.[i] ?? 0;
+      const sum = (Number.isFinite(valA) ? valA : 0) + (Number.isFinite(valB) ? valB : 0);
+      return Number.isFinite(sum) ? sum : 0;
+    });
+  const max = (a: number[] | undefined, b: number[] | undefined): number[] =>
+    Array.from({ length: 12 }, (_, i) => {
+      const valA = a?.[i] ?? 0;
+      const valB = b?.[i] ?? 0;
+      const m = Math.max(Number.isFinite(valA) ? valA : 0, Number.isFinite(valB) ? valB : 0);
+      return Number.isFinite(m) ? m : 0;
+    });
+  const mergeRecords = (a: Record<string, number[]> | undefined, b: Record<string, number[]> | undefined): Record<string, number[]> => {
+    const res = { ...(a || {}) };
+    for (const [k, bArr] of Object.entries(b || {})) {
+      res[k] = res[k] ? add(res[k], bArr) : [...bArr];
+    }
+    return res;
+  };
+
+  // Start with empty metrics
+  let total: DashboardMetrics = {
+    year, totalRevenue: 0, monthRevenue: new Array(12).fill(0), monthEpisodes: new Array(12).fill(0),
+    admCasualty: new Array(12).fill(0), admDay: new Array(12).fill(0), admInpatient: new Array(12).fill(0), admLab: new Array(12).fill(0),
+    theatreCases: new Array(12).fill(0), theatreMinutes: new Array(12).fill(0), theatreUtil: new Array(12).fill(0), theatrePctOcc: new Array(12).fill(0),
+    pharmacyRx: new Array(12).fill(0), pharmacyRev: new Array(12).fill(0), occupancyBeds: new Array(12).fill(0), patientDays: {},
+    pctOccWard: {}, patDaysWard: {}, patDaysLOC: {}, occMidnight: new Array(12).fill(0), revLocation: {}, admPerWard: {},
+    debtRecon: { brought: new Array(12).fill(0), revenue: new Array(12).fill(0), payments: new Array(12).fill(0), sundries: new Array(12).fill(0), total: new Array(12).fill(0) },
+    casToInpatient: new Array(12).fill(0), epsFinalised: new Array(12).fill(0), dischNotFinalised: new Array(12).fill(0),
+    revPerPatDay: new Array(12).fill(0), gpEthical: new Array(12).fill(0), gpSurgical: new Array(12).fill(0),
+    payments: { deposits: new Array(12).fill(0), individual: new Array(12).fill(0), medAid: new Array(12).fill(0), batched: new Array(12).fill(0) },
+    rawColumns: {}, discharges: {}, dischargesPerWard: {}, patientsAtMidday: {}, billedPatDays: {}, cosLocation: {},
+    gpEthicalPerLoc: {}, gpSurgicalPerLoc: {}, revPerRevCentre: {}, chargeableItems: {}, nonChargeableItems: {},
+    stockReceiptsDiscount: {}, stockReceipts: {}, stockReceiptsValue: {}, prescriptionsHospital: new Array(12).fill(0),
+    prescriptionsRetail: new Array(12).fill(0), prescriptionsRevHospital: new Array(12).fill(0), prescriptionsRevRetail: new Array(12).fill(0),
+    dischNotFinalisedValue: new Array(12).fill(0), accountSundries: new Array(12).fill(0)
+  };
+
+  for (const snap of Object.values(snapshots)) {
+    total = {
+      ...snap, // carry over base properties
+      year,
+      totalRevenue: total.totalRevenue + snap.totalRevenue,
+      monthRevenue: add(total.monthRevenue, snap.monthRevenue),
+      monthEpisodes: add(total.monthEpisodes, snap.monthEpisodes),
+      admCasualty: add(total.admCasualty, snap.admCasualty),
+      admDay: add(total.admDay, snap.admDay),
+      admInpatient: add(total.admInpatient, snap.admInpatient),
+      admLab: add(total.admLab, snap.admLab),
+      theatreCases: add(total.theatreCases, snap.theatreCases),
+      theatreMinutes: add(total.theatreMinutes, snap.theatreMinutes),
+      theatreUtil: max(total.theatreUtil, snap.theatreUtil),
+      theatrePctOcc: max(total.theatrePctOcc, snap.theatrePctOcc),
+      pharmacyRx: add(total.pharmacyRx, snap.pharmacyRx),
+      pharmacyRev: add(total.pharmacyRev, snap.pharmacyRev),
+      occupancyBeds: max(total.occupancyBeds, snap.occupancyBeds),
+      occMidnight: add(total.occMidnight, snap.occMidnight),
+      casToInpatient: add(total.casToInpatient, snap.casToInpatient),
+      epsFinalised: add(total.epsFinalised, snap.epsFinalised),
+      dischNotFinalised: add(total.dischNotFinalised, snap.dischNotFinalised),
+      revPerPatDay: max(total.revPerPatDay, snap.revPerPatDay),
+      gpEthical: max(total.gpEthical, snap.gpEthical),
+      gpSurgical: max(total.gpSurgical, snap.gpSurgical),
+      prescriptionsHospital: add(total.prescriptionsHospital, snap.prescriptionsHospital),
+      prescriptionsRetail: add(total.prescriptionsRetail, snap.prescriptionsRetail),
+      prescriptionsRevHospital: add(total.prescriptionsRevHospital, snap.prescriptionsRevHospital),
+      prescriptionsRevRetail: add(total.prescriptionsRevRetail, snap.prescriptionsRevRetail),
+      dischNotFinalisedValue: add(total.dischNotFinalisedValue, snap.dischNotFinalisedValue),
+      accountSundries: add(total.accountSundries, snap.accountSundries),
+      // Record maps
+      patientDays: mergeRecords(total.patientDays, snap.patientDays),
+      pctOccWard: mergeRecords(total.pctOccWard, snap.pctOccWard),
+      patDaysWard: mergeRecords(total.patDaysWard, snap.patDaysWard),
+      patDaysLOC: mergeRecords(total.patDaysLOC, snap.patDaysLOC),
+      admPerWard: mergeRecords(total.admPerWard, snap.admPerWard),
+      revLocation: mergeRecords(total.revLocation, snap.revLocation),
+      rawColumns: mergeRecords(total.rawColumns, snap.rawColumns),
+      discharges: mergeRecords(total.discharges, snap.discharges),
+      dischargesPerWard: mergeRecords(total.dischargesPerWard, snap.dischargesPerWard),
+      patientsAtMidday: mergeRecords(total.patientsAtMidday, snap.patientsAtMidday),
+      billedPatDays: mergeRecords(total.billedPatDays, snap.billedPatDays),
+      cosLocation: mergeRecords(total.cosLocation, snap.cosLocation),
+      gpEthicalPerLoc: mergeRecords(total.gpEthicalPerLoc, snap.gpEthicalPerLoc),
+      gpSurgicalPerLoc: mergeRecords(total.gpSurgicalPerLoc, snap.gpSurgicalPerLoc),
+      revPerRevCentre: mergeRecords(total.revPerRevCentre, snap.revPerRevCentre),
+      chargeableItems: mergeRecords(total.chargeableItems, snap.chargeableItems),
+      nonChargeableItems: mergeRecords(total.nonChargeableItems, snap.nonChargeableItems),
+      stockReceiptsDiscount: mergeRecords(total.stockReceiptsDiscount, snap.stockReceiptsDiscount),
+      stockReceipts: mergeRecords(total.stockReceipts, snap.stockReceipts),
+      stockReceiptsValue: mergeRecords(total.stockReceiptsValue, snap.stockReceiptsValue),
+      debtRecon: {
+        brought: add(total.debtRecon.brought, snap.debtRecon.brought),
+        revenue: add(total.debtRecon.revenue, snap.debtRecon.revenue),
+        payments: add(total.debtRecon.payments, snap.debtRecon.payments),
+        sundries: add(total.debtRecon.sundries, snap.debtRecon.sundries),
+        total: add(total.debtRecon.total, snap.debtRecon.total),
+      },
+      payments: {
+        deposits: add(total.payments.deposits, snap.payments.deposits),
+        individual: add(total.payments.individual, snap.payments.individual),
+        medAid: add(total.payments.medAid, snap.payments.medAid),
+        batched: add(total.payments.batched, snap.payments.batched),
+      },
+    };
+  }
+
+  return total;
+}
+
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
@@ -237,87 +359,32 @@ export const useStore = create<StoreState>()(
           };
 
           // ──────────────────────────────────────────────────────
-          // 1. DASHBOARD: Additive merge for daily updates
-          //    New monthly data gets ADDED to existing totals.
-          //    If only one side has data, use that side.
+          // 1. DASHBOARD: Idempotent Snapshot-based Merge
+          //    Each file hash gets its own slot. Doubling is impossible.
           // ──────────────────────────────────────────────────────
-          let mergedDashboard: DashboardMetrics | null = existing.dashboard;
+          let mergedDashboardSnapshots: Record<string, DashboardMetrics> = existing.dashboardSnapshots || {};
+          
+          // Legacy migration
+          if (Object.keys(mergedDashboardSnapshots).length === 0 && existing.dashboard) {
+            mergedDashboardSnapshots['legacy'] = existing.dashboard;
+          }
 
-          if (normalizedData.dashboard && existing.dashboard) {
-            const a = existing.dashboard;
-            const b = normalizedData.dashboard;
-
-            // All number[] fields that should be summed
-            const monthRevenue = addArrays(a.monthRevenue, b.monthRevenue);
-            const monthEpisodes = addArrays(a.monthEpisodes, b.monthEpisodes);
-
-            mergedDashboard = {
-              ...b,
-              year,
-              totalRevenue: a.totalRevenue + b.totalRevenue,
-              monthRevenue,
-              monthEpisodes,
-              admCasualty: addArrays(a.admCasualty, b.admCasualty),
-              admDay: addArrays(a.admDay, b.admDay),
-              admInpatient: addArrays(a.admInpatient, b.admInpatient),
-              admLab: addArrays(a.admLab, b.admLab),
-              theatreCases: addArrays(a.theatreCases, b.theatreCases),
-              theatreMinutes: addArrays(a.theatreMinutes, b.theatreMinutes),
-              theatreUtil: maxArrays(a.theatreUtil, b.theatreUtil), // % — take max
-              theatrePctOcc: maxArrays(a.theatrePctOcc, b.theatrePctOcc), // % — take max
-              pharmacyRx: addArrays(a.pharmacyRx, b.pharmacyRx),
-              pharmacyRev: addArrays(a.pharmacyRev, b.pharmacyRev),
-              occupancyBeds: maxArrays(a.occupancyBeds, b.occupancyBeds), // % — take max
-              occMidnight: addArrays(a.occMidnight, b.occMidnight),
-              casToInpatient: addArrays(a.casToInpatient, b.casToInpatient),
-              epsFinalised: addArrays(a.epsFinalised, b.epsFinalised),
-              dischNotFinalised: addArrays(a.dischNotFinalised, b.dischNotFinalised),
-              revPerPatDay: maxArrays(a.revPerPatDay, b.revPerPatDay), // rate — take max
-              gpEthical: maxArrays(a.gpEthical, b.gpEthical), // % — take max
-              gpSurgical: maxArrays(a.gpSurgical, b.gpSurgical), // % — take max
-              prescriptionsHospital: addArrays(a.prescriptionsHospital, b.prescriptionsHospital),
-              prescriptionsRetail: addArrays(a.prescriptionsRetail, b.prescriptionsRetail),
-              prescriptionsRevHospital: addArrays(a.prescriptionsRevHospital, b.prescriptionsRevHospital),
-              prescriptionsRevRetail: addArrays(a.prescriptionsRevRetail, b.prescriptionsRevRetail),
-              dischNotFinalisedValue: addArrays(a.dischNotFinalisedValue, b.dischNotFinalisedValue),
-              accountSundries: addArrays(a.accountSundries, b.accountSundries),
-              // Record<string, number[]> fields — additive merge per key
-              patientDays: mergeRecordArrays(a.patientDays, b.patientDays),
-              pctOccWard: mergeRecordArrays(a.pctOccWard, b.pctOccWard),
-              patDaysWard: mergeRecordArrays(a.patDaysWard, b.patDaysWard),
-              patDaysLOC: mergeRecordArrays(a.patDaysLOC, b.patDaysLOC),
-              admPerWard: mergeRecordArrays(a.admPerWard, b.admPerWard),
-              revLocation: mergeRecordArrays(a.revLocation, b.revLocation),
-              rawColumns: mergeRecordArrays(a.rawColumns, b.rawColumns),
-              discharges: mergeRecordArrays(a.discharges, b.discharges),
-              dischargesPerWard: mergeRecordArrays(a.dischargesPerWard, b.dischargesPerWard),
-              patientsAtMidday: mergeRecordArrays(a.patientsAtMidday, b.patientsAtMidday),
-              billedPatDays: mergeRecordArrays(a.billedPatDays, b.billedPatDays),
-              cosLocation: mergeRecordArrays(a.cosLocation, b.cosLocation),
-              gpEthicalPerLoc: mergeRecordArrays(a.gpEthicalPerLoc, b.gpEthicalPerLoc),
-              gpSurgicalPerLoc: mergeRecordArrays(a.gpSurgicalPerLoc, b.gpSurgicalPerLoc),
-              revPerRevCentre: mergeRecordArrays(a.revPerRevCentre, b.revPerRevCentre),
-              chargeableItems: mergeRecordArrays(a.chargeableItems, b.chargeableItems),
-              nonChargeableItems: mergeRecordArrays(a.nonChargeableItems, b.nonChargeableItems),
-              stockReceiptsDiscount: mergeRecordArrays(a.stockReceiptsDiscount, b.stockReceiptsDiscount),
-              stockReceipts: mergeRecordArrays(a.stockReceipts, b.stockReceipts),
-              stockReceiptsValue: mergeRecordArrays(a.stockReceiptsValue, b.stockReceiptsValue),
-              // Nested objects — additive (guard against undefined sub-objects)
-              debtRecon: {
-                brought: addArrays(a.debtRecon?.brought, b.debtRecon?.brought),
-                revenue: addArrays(a.debtRecon?.revenue, b.debtRecon?.revenue),
-                payments: addArrays(a.debtRecon?.payments, b.debtRecon?.payments),
-                sundries: addArrays(a.debtRecon?.sundries, b.debtRecon?.sundries),
-                total: addArrays(a.debtRecon?.total, b.debtRecon?.total),
-              },
-              payments: {
-                deposits: addArrays(a.payments?.deposits, b.payments?.deposits),
-                individual: addArrays(a.payments?.individual, b.payments?.individual),
-                medAid: addArrays(a.payments?.medAid, b.payments?.medAid),
-                batched: addArrays(a.payments?.batched, b.payments?.batched),
-              },
+          if (normalizedData.dashboard) {
+            // Find hash from the incoming upload record
+            const incomingUpload = normalizedData.uploads.find(u => u.category === 'Dashboard');
+            const hash = incomingUpload?.fileHash || incomingUpload?.id || 'unknown';
+            
+            // Store the new snapshot (replaces if same hash)
+            mergedDashboardSnapshots = {
+              ...mergedDashboardSnapshots,
+              [hash]: normalizedData.dashboard,
             };
-          } else if (normalizedData.dashboard) {
+            
+            console.log(`[Store] Stored Dashboard snapshot for hash: ${hash}. Total snapshots: ${Object.keys(mergedDashboardSnapshots).length}`);
+          }
+
+          // Compute global dashboard by summing all snapshots
+          const mergedDashboard = sumDashboardMetrics(mergedDashboardSnapshots, year);
             mergedDashboard = normalizedData.dashboard;
           }
 
@@ -583,6 +650,7 @@ export const useStore = create<StoreState>()(
             year,
             dash: mergedDashboard,
             dashboard: mergedDashboard,
+            dashboardSnapshots: mergedDashboardSnapshots,
             loc: mergedLocation,
             location: mergedLocation,
             apac: mergedClaims,

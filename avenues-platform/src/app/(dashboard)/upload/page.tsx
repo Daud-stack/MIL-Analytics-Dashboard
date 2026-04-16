@@ -477,6 +477,7 @@ export default function UploadPage() {
             id: uploadId,
             category,
             fileName: upload.file.name,
+            fileHash: upload.fileHash,
             uploadedAt: now,
             rowCount: upload.rowCount,
             action,

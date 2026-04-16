@@ -264,6 +264,7 @@ export interface UploadRecord {
   id: string;                 // unique upload id (crypto.randomUUID)
   category: UploadCategory;   // which data slot this populated
   fileName: string;           // original file name
+  fileHash?: string;          // content hash for deduplication
   uploadedAt: string;         // ISO timestamp
   rowCount: number;           // rows/data-points contributed
   action: 'replace' | 'append'; // was this a fresh load or an append?
@@ -326,6 +327,8 @@ export interface YearData {
   apac: ClaimsMetrics | null;
   claims: ClaimsMetrics | null; // alias for consistency
   uploads: UploadRecord[];     // history of all files ingested for this year
+  /** Maps file hash -> DashboardMetrics for idempotent summation */
+  dashboardSnapshots?: Record<string, DashboardMetrics>;
   datasets: Record<string, GenericDataset>; // key = dataset name/schemaId
 }
 
