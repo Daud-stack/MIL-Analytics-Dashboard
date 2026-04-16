@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import prisma from '@/lib/prisma';
+import { mergeDashboard, mergeLocation, mergeClaims } from '@/lib/data-merger';
 
 /**
  * POST /api/data/ingest
@@ -101,15 +102,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ── Build the update payload ──
-    // Only update the field matching the fileType
+    // ── Build the update payload using merging ──
     const updateData: Record<string, unknown> = {};
     if (fileType === 'Dashboard') {
-      updateData.dashboard = data;
+      updateData.dashboard = mergeDashboard(existing?.dashboard as any, data as any);
     } else if (fileType === 'Location') {
-      updateData.location = data;
+      updateData.location = mergeLocation(existing?.location as any, data as any);
     } else if (fileType === 'Claims') {
-      updateData.claims = data;
+      updateData.claims = mergeClaims(existing?.claims as any, data as any);
     }
 
     // ── Build upload metadata ──

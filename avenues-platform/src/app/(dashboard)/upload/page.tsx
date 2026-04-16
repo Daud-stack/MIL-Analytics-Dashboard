@@ -463,8 +463,8 @@ export default function UploadPage() {
             upload.type === 'Location' ? 'Location' :
             upload.type === 'Claims' ? 'Claims' : 'Dashboard';
 
-          // Determine action: Dashboard always replaces, LOC/Claims append
-          const action: 'replace' | 'append' = category === 'Dashboard' ? 'replace' : 'append';
+          // Determine action: All categories now append (additive for Dashboard)
+          const action: 'append' = 'append';
 
           // Create upload tracking record
           const uploadRecord: UploadRecord = {
@@ -826,7 +826,7 @@ export default function UploadPage() {
               <Database className="h-5 w-5 text-gray-500" />
               <div>
                 <h2 className="font-semibold text-gray-900">Data Store — {currentYear}</h2>
-                <p className="text-xs text-gray-500">{existingUploads.length} file(s) loaded. Dashboard replaces on re-upload; Location &amp; Claims append new rows.</p>
+                <p className="text-xs text-gray-500">{existingUploads.length} file(s) loaded. All categories use additive merging/appending for daily updates.</p>
               </div>
             </div>
             <div className="divide-y divide-gray-100">
@@ -865,7 +865,7 @@ export default function UploadPage() {
               <div className="w-3 h-3 rounded-full bg-teal-500" />
               <h3 className="font-semibold text-gray-900">Dashboard CSV</h3>
             </div>
-            <p className="text-xs text-gray-600 mb-2">RptManagementDashboard format — replaces on re-upload</p>
+            <p className="text-xs text-gray-600 mb-2">RptManagementDashboard format — appends/sums on re-upload</p>
             <p className="text-xs text-gray-500">Line 1: Facility name, Line 2: Report description with dates, Line 3: Column headers, Lines 4+: Section-based metric rows</p>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
