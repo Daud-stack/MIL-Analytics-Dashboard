@@ -385,8 +385,6 @@ export const useStore = create<StoreState>()(
 
           // Compute global dashboard by summing all snapshots
           const mergedDashboard = sumDashboardMetrics(mergedDashboardSnapshots, year);
-            mergedDashboard = normalizedData.dashboard;
-          }
 
           // ──────────────────────────────────────────────────────
           // 2. LOCATION: Append with row-level deduplication
