@@ -16,8 +16,10 @@
     "docker:dev": "docker compose up --build",
     "docker:prod": "docker compose -f docker-compose.prod.yml up --build -d",
     "docker:down": "docker compose down",
-    "watch:files": "tsx scripts/file-watcher.ts",
-    "watch:files:bg": "tsx scripts/file-watcher.ts &"
+    "watch:files": "tsx scripts/file-watcher-main.ts",
+    "watch:files:detached": "start \"AvenuesClinicalFileWatcher\" /B node node_modules/tsx/dist/cli.mjs scripts/file-watcher-main.ts",
+    "watch:files:service:install": "node scripts/install-service.cjs",
+    "watch:files:service:uninstall": "node scripts/uninstall-service.cjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.7.0",

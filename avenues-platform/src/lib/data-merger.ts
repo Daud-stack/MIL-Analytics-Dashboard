@@ -1,4 +1,4 @@
-import { DashboardMetrics, LocationData, ClaimsMetrics, UploadRecord, GenericDataset, ClaimSchemeData } from '../types';
+import { DashboardMetrics, LocationData, ClaimsMetrics, GenericDataset, ClaimSchemeData } from '../types';
 
 /**
  * Server-side implementation of the data merge logic.
@@ -70,6 +70,56 @@ export const mergeRecordArrays = (
   }
   return result;
 };
+
+const genericRowFingerprint = (dataset: GenericDataset, row: Record<string, unknown>): string =>
+  dataset.schema.columnNames
+    .map((column) => String(row[column] ?? '').trim())
+    .join('|');
+
+export function mergeGenericDataset(
+  existing: GenericDataset,
+  incoming: GenericDataset
+): GenericDataset {
+  const existingFingerprints = new Set(
+    existing.rows.map((row) => genericRowFingerprint(existing, row))
+  );
+
+  const newRows = incoming.rows.filter((row) => {
+    const fingerprint = genericRowFingerprint(incoming, row);
+    return !existingFingerprints.has(fingerprint);
+  });
+
+  const mergedRows = [...existing.rows, ...newRows].slice(0, 2000);
+
+  return {
+    ...incoming,
+    id: existing.id,
+    uploadedAt: incoming.uploadedAt,
+    rowCount: existing.rowCount + newRows.length,
+    rows: mergedRows,
+  };
+}
+
+export function mergeGenericDatasets(
+  existing: Record<string, GenericDataset> | null | undefined,
+  incoming: Record<string, GenericDataset>
+): Record<string, GenericDataset> {
+  const merged: Record<string, GenericDataset> = { ...(existing || {}) };
+
+  for (const [incomingId, incomingDataset] of Object.entries(incoming)) {
+    const existingDataset = Object.values(merged).find(
+      (dataset) => dataset.schemaId === incomingDataset.schemaId
+    );
+
+    if (existingDataset) {
+      merged[existingDataset.id] = mergeGenericDataset(existingDataset, incomingDataset);
+    } else {
+      merged[incomingId] = incomingDataset;
+    }
+  }
+
+  return merged;
+}
 
 // ──────────────────────────────────────────────────────
 // MERGE LOGIC PER CATEGORY

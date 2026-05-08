@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
-import { mergeDashboard, mergeLocation, mergeClaims } from '@/lib/data-merger';
+import { mergeDashboard, mergeLocation, mergeClaims, mergeGenericDatasets } from '@/lib/data-merger';
+import type { DashboardMetrics, LocationData, ClaimsMetrics, GenericDataset } from '@/types';
 
 /**
  * POST /api/data/ingest
@@ -16,8 +18,8 @@ import { mergeDashboard, mergeLocation, mergeClaims } from '@/lib/data-merger';
  * Request body:
  *   {
  *     year: number,
- *     fileType: 'Dashboard' | 'Location' | 'Claims',
- *     data: object,           // parsed result (dashboard/location/claims object)
+ *     fileType: 'Dashboard' | 'Location' | 'Claims' | 'Generic',
+ *     data: object,           // parsed result payload
  *     fileName: string,
  *     sha256: string          // file hash for deduplication
  *   }
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
     // ── Parse and validate request body ──
     const IngestSchema = z.object({
       year: z.number().int().min(2000).max(2100),
-      fileType: z.enum(['Dashboard', 'Location', 'Claims']),
+      fileType: z.enum(['Dashboard', 'Location', 'Claims', 'Generic']),
       data: z.record(z.string(), z.unknown()).refine(val => Object.keys(val).length > 0, {
         message: 'data must be a non-empty object',
       }),
@@ -88,8 +90,14 @@ export async function POST(request: NextRequest) {
         dashboard: true,
         location: true,
         claims: true,
+        datasets: true,
       },
     });
+
+    const existingDashboard = existing?.dashboard as DashboardMetrics | null | undefined;
+    const existingLocation = existing?.location as LocationData | null | undefined;
+    const existingClaims = existing?.claims as ClaimsMetrics | null | undefined;
+    const existingDatasets = existing?.datasets as Record<string, GenericDataset> | null | undefined;
 
     if (existing?.processedHashes?.includes(sha256)) {
       return NextResponse.json({
@@ -105,11 +113,13 @@ export async function POST(request: NextRequest) {
     // ── Build the update payload using merging ──
     const updateData: Record<string, unknown> = {};
     if (fileType === 'Dashboard') {
-      updateData.dashboard = mergeDashboard(existing?.dashboard as any, data as any);
+      updateData.dashboard = mergeDashboard(existingDashboard ?? null, data as DashboardMetrics);
     } else if (fileType === 'Location') {
-      updateData.location = mergeLocation(existing?.location as any, data as any);
+      updateData.location = mergeLocation(existingLocation ?? null, data as LocationData);
     } else if (fileType === 'Claims') {
-      updateData.claims = mergeClaims(existing?.claims as any, data as any);
+      updateData.claims = mergeClaims(existingClaims ?? null, data as ClaimsMetrics);
+    } else if (fileType === 'Generic') {
+      updateData.datasets = mergeGenericDatasets(existingDatasets, data as Record<string, GenericDataset>);
     }
 
     // ── Build upload metadata ──
@@ -125,7 +135,8 @@ export async function POST(request: NextRequest) {
 
     // ── Merge with existing data ──
     const currentHashes = existing?.processedHashes || [];
-    const currentUploads = (existing?.uploads as unknown[]) || [];
+    const currentUploads = ((existing?.uploads as Prisma.JsonArray | null | undefined) ?? []) as Prisma.JsonArray;
+    const nextUploads = [...currentUploads, uploadRecord as Prisma.JsonObject] as Prisma.JsonArray;
 
     // ── Upsert YearDataRecord ──
     const result = await prisma.yearDataRecord.upsert({
@@ -135,14 +146,12 @@ export async function POST(request: NextRequest) {
         orgId,
         ...updateData,
         processedHashes: [...currentHashes, sha256],
-        // Prisma JSON fields require 'as any' cast for array spread operations
-        uploads: [...currentUploads, uploadRecord] as any,
+        uploads: nextUploads,
       },
       update: {
         ...updateData,
         processedHashes: [...currentHashes, sha256],
-        // Prisma JSON fields require 'as any' cast for array spread operations
-        uploads: [...currentUploads, uploadRecord] as any,
+        uploads: nextUploads,
         updatedAt: new Date(),
       },
     });
