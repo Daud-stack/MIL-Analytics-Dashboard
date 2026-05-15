@@ -1,8 +1,8 @@
-# Avenues Clinic — File Watcher Setup Guide
+# File Watcher Setup Guide
 
-This guide walks through setting up and running the Avenues Clinic CSV File Watcher on a Windows Server.
+This guide walks through setting up and running the CSV File Watcher on a Windows Server.
 
-The file watcher monitors a shared network folder for new CSV files, auto-detects their type (Dashboard, Location, or Claims), parses them, and POSTs the parsed data to the Vercel API using machine-to-machine authentication.
+The file watcher monitors a shared network folder for new CSV files, auto-detects their type (Dashboard, Location, or Claims), parses them, and POSTs the parsed data to the configured app API using machine-to-machine authentication.
 
 ---
 
@@ -12,8 +12,8 @@ The file watcher monitors a shared network folder for new CSV files, auto-detect
 - **Administrator access** to install Node.js and configure Windows Services
 - **Network access** to:
   - The shared folder where CSV files are dropped
-  - The Vercel API endpoint (`mil-analytics-dashboard.vercel.app`)
-- **Organization ID and API Key** from your Avenues Clinic administrator
+  - Your deployed app API endpoint
+- **Organization ID and API Key** from your dashboard administrator
 
 ---
 
@@ -75,17 +75,17 @@ If you don't have Git, copy just the scripts folder:
 
 2. **Fill in the configuration**
    ```
-   API_URL=https://mil-analytics-dashboard.vercel.app
+   API_URL=https://your-dashboard.example.com
    INGEST_API_KEY=your-secret-api-key-here
    ORG_ID=your-org-id-here
-   WATCH_DIR=C:\AvenuesClinic\SharedData\CSVDropFolder
-   ARCHIVE_DIR=C:\AvenuesClinic\SharedData\Archived
+   WATCH_DIR=C:\AnalyticsDashboard\SharedData\CSVDropFolder
+   ARCHIVE_DIR=C:\AnalyticsDashboard\SharedData\Archived
    POLL_MS=3000
    ```
 
 3. **Get your credentials**
-   - **INGEST_API_KEY**: Contact your Avenues Clinic administrator. This is a secure API key set in the Vercel environment.
-   - **ORG_ID**: Available in your Avenues Clinic account or database. Ask your administrator if unsure.
+   - **INGEST_API_KEY**: Contact your dashboard administrator. This is a secure API key set in the deployment environment.
+   - **ORG_ID**: Available in your dashboard account or database. Ask your administrator if unsure.
 
 4. **Update the paths**
    - **WATCH_DIR**: The shared network folder where users will drop CSV files
@@ -98,19 +98,19 @@ If you don't have Git, copy just the scripts folder:
 On the shared network storage or local server:
 
 1. **Create the drop folder**
-   - `C:\AvenuesClinic\SharedData\CSVDropFolder` (or your chosen path)
+   - `C:\AnalyticsDashboard\SharedData\CSVDropFolder` (or your chosen path)
    - Set NTFS permissions:
      - Assign read/write access to clinic users
      - Assign full access to the Windows service account (see Step 5)
 
 2. **Create the archive folder**
-   - `C:\AvenuesClinic\SharedData\Archived` (or your chosen path)
+   - `C:\AnalyticsDashboard\SharedData\Archived` (or your chosen path)
    - This folder will store processed files with timestamps
 
 3. **Create a README for users**
    - In the drop folder, create a `README.txt` with instructions for uploading files:
      ```
-     Avenues Clinic CSV Upload Folder
+     Analytics Dashboard CSV Upload Folder
      =================================
      
      Instructions:
@@ -142,11 +142,11 @@ Before setting up as a service, test it manually:
 2. **Load the environment variables**
    ```powershell
    # Create a temporary .env file or set variables manually
-   $env:API_URL = "https://mil-analytics-dashboard.vercel.app"
+   $env:API_URL = "https://your-dashboard.example.com"
    $env:INGEST_API_KEY = "your-key-here"
    $env:ORG_ID = "your-org-id"
-   $env:WATCH_DIR = "C:\AvenuesClinic\SharedData\CSVDropFolder"
-   $env:ARCHIVE_DIR = "C:\AvenuesClinic\SharedData\Archived"
+   $env:WATCH_DIR = "C:\AnalyticsDashboard\SharedData\CSVDropFolder"
+   $env:ARCHIVE_DIR = "C:\AnalyticsDashboard\SharedData\Archived"
    $env:POLL_MS = "3000"
    ```
 
@@ -163,13 +163,13 @@ Before setting up as a service, test it manually:
      🆕 New file detected: test.csv
      📄 Processing: test.csv
      Type detected: Dashboard
-     Posting to https://mil-analytics-dashboard.vercel.app/api/data/ingest...
+     Posting to https://your-dashboard.example.com/api/data/ingest...
      ✅ Ingested: test.csv → year 2024 (Dashboard)
      📦 Archived: 2024-04-10T15-30-45_test.csv
      ```
 
 5. **Verify the data**
-   - Log in to the Avenues Clinic dashboard
+   - Log in to the dashboard
    - Check that your data appears in the system
 
 6. **Stop the watcher**
@@ -195,8 +195,8 @@ Once manual testing succeeds, you can install the watcher as a Windows Service t
 
    // Create a new service
    const svc = new Service({
-     name: 'AvenuesClinicalFileWatcher',
-     description: 'Monitors CSV uploads and ingests to Avenues Clinic',
+     name: 'MilAnalyticsFileWatcher',
+     description: 'Monitors CSV uploads and ingests to the analytics dashboard',
      script: path.join(__dirname, 'file-watcher.ts'),
      scriptOptions: '--no-deprecation',
      nodeOptions: ['--no-warnings'],
@@ -356,7 +356,7 @@ Ensure the service account has proper access:
 
 3. **Test API connectivity**
    ```powershell
-   curl -X GET "https://mil-analytics-dashboard.vercel.app/api/health"
+   curl -X GET "https://your-dashboard.example.com/api/health"
    ```
 
 ### Files being archived as "dup" or "error"
@@ -406,7 +406,7 @@ For issues or questions:
 1. Check the logs in Event Viewer or the application logs
 2. Verify all environment variables in `.env.watcher`
 3. Test manually before deploying as a service
-4. Contact your Avenues Clinic administrator for API key issues
+4. Contact your dashboard administrator for API key issues
 
 ---
 

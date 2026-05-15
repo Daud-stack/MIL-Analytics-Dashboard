@@ -82,17 +82,6 @@ export default function DoctorsPage() {
       .sort((a, b) => b.episodes - a.episodes);
   }, [doctorsWithLos]);
 
-  const _revenueData = useMemo(() => {
-    return doctorsWithLos
-      .slice()
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 12)
-      .map((doc) => ({
-        month: `Dr ${doc.name.split(' ')[2]}`,
-        value: doc.revenue / 100000,
-      }));
-  }, [doctorsWithLos]);
-
   const kpis = useMemo(() => {
     if (doctorsWithLos.length === 0) return { totalDoctors: 0, avgEpisodes: 0, avgRevenue: 0, topSpecialty: 'N/A' };
     const totalDoctors = doctorsWithLos.length;

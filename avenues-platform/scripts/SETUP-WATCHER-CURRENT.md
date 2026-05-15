@@ -1,4 +1,4 @@
-# Avenues Clinic File Watcher Setup Guide
+# File Watcher Setup Guide
 
 This is the current setup guide for the watcher scripts in this repo.
 

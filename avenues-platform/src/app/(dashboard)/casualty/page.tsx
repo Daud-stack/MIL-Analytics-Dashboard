@@ -55,55 +55,6 @@ function calculateZScore(values: number[]): number[] {
   return values.map((v) => (v - mean) / std);
 }
 
-const _timeOfDayData = [
-  { hour: '00:00-02:00', admissions: 12 },
-  { hour: '02:00-04:00', admissions: 28 },
-  { hour: '04:00-06:00', admissions: 18 },
-  { hour: '06:00-08:00', admissions: 35 },
-  { hour: '08:00-10:00', admissions: 95 },
-  { hour: '10:00-12:00', admissions: 125 },
-  { hour: '12:00-14:00', admissions: 142 },
-  { hour: '14:00-16:00', admissions: 138 },
-  { hour: '16:00-18:00', admissions: 115 },
-  { hour: '18:00-20:00', admissions: 98 },
-  { hour: '20:00-22:00', admissions: 72 },
-  { hour: '22:00-24:00', admissions: 55 },
-];
-
-const _casualtyByType = [
-  { type: 'Trauma/Injuries', count: 485, percentage: 28.4 },
-  { type: 'Acute Medical', count: 342, percentage: 20.0 },
-  { type: 'Respiratory Issues', count: 195, percentage: 11.4 },
-  { type: 'Chest/Cardiac', count: 168, percentage: 9.8 },
-  { type: 'Abdominal/GI', count: 152, percentage: 8.9 },
-  { type: 'CNS/Neuro', count: 125, percentage: 7.3 },
-  { type: 'Other', count: 142, percentage: 8.3 },
-];
-
-const _ambulanceMetrics = [
-  { metric: 'Total Ambulance Cases', value: '742', unit: 'cases' },
-  { metric: 'Avg Response Time', value: '12.5', unit: 'minutes' },
-  { metric: 'On-Scene Duration', value: '18', unit: 'minutes' },
-  { metric: 'Transport Time', value: '24', unit: 'minutes' },
-  { metric: 'Critical Cases', value: '158', unit: '21.3%' },
-  { metric: 'Self-Reported Walk-in', value: '1,088', unit: '63.8%' },
-];
-
-const _comboChartData = [
-  { month: 'Jan', casualty: 145, totalAdmissions: 468, casualtyPercent: 31.0 },
-  { month: 'Feb', casualty: 152, totalAdmissions: 488, casualtyPercent: 32.2 },
-  { month: 'Mar', casualty: 168, totalAdmissions: 526, casualtyPercent: 32.1 },
-  { month: 'Apr', casualty: 172, totalAdmissions: 550, casualtyPercent: 31.3 },
-  { month: 'May', casualty: 189, totalAdmissions: 599, casualtyPercent: 31.7 },
-  { month: 'Jun', casualty: 198, totalAdmissions: 632, casualtyPercent: 31.3 },
-  { month: 'Jul', casualty: 205, totalAdmissions: 660, casualtyPercent: 31.0 },
-  { month: 'Aug', casualty: 198, totalAdmissions: 641, casualtyPercent: 30.9 },
-  { month: 'Sep', casualty: 185, totalAdmissions: 608, casualtyPercent: 30.4 },
-  { month: 'Oct', casualty: 175, totalAdmissions: 570, casualtyPercent: 30.7 },
-  { month: 'Nov', casualty: 162, totalAdmissions: 532, casualtyPercent: 30.5 },
-  { month: 'Dec', casualty: 178, totalAdmissions: 574, casualtyPercent: 31.0 },
-];
-
 export default function CasualtyPage() {
   const dashData = useDashboard();
 

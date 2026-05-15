@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Avenues Clinic — Automated CSV File Watcher (API-based)
+ * Automated CSV File Watcher (API-based)
  *
  * Monitors a configurable directory for new .csv files, auto-parses them using
  * the existing detection + parsing logic, and POSTs parsed data directly to the
@@ -17,7 +17,7 @@
  *   npm run watch:files
  *
  * Environment variables (.env.watcher):
- *   API_URL      — Vercel deployment URL (default: https://mil-analytics-dashboard.vercel.app)
+ *   API_URL      — deployment URL for the app (required)
  *   INGEST_API_KEY  — API key for authentication (required)
  *   ORG_ID       — Organization ID (required)
  *   WATCH_DIR    — directory to monitor (default: ./uploads)
@@ -46,9 +46,10 @@ import { parseGenericCSV } from '../src/lib/generic-parser';
 
 // ── Configuration ──
 
-const API_URL = (process.env.API_URL || 'https://mil-analytics-dashboard.vercel.app').replace(/\/$/, '');
+const API_URL = (process.env.API_URL || '').replace(/\/$/, '');
 const INGEST_API_KEY = process.env.INGEST_API_KEY;
 const ORG_ID = process.env.ORG_ID;
+const APP_NAME = process.env.APP_NAME || process.env.NEXT_PUBLIC_APP_NAME || 'MIL Analytics Dashboard';
 const WATCH_DIR = path.resolve(process.env.WATCH_DIR || './uploads');
 const ARCHIVE_DIR = path.resolve(process.env.ARCHIVE_DIR || './archived');
 const POLL_MS = parseInt(process.env.POLL_MS || '2000', 10);
@@ -66,6 +67,10 @@ function validateConfig(): void {
 
   if (!ORG_ID) {
     errors.push('ORG_ID environment variable is required');
+  }
+
+  if (!API_URL) {
+    errors.push('API_URL environment variable is required');
   }
 
   if (errors.length > 0) {
@@ -380,7 +385,7 @@ async function processExistingFiles(): Promise<void> {
 // ── Start the watcher ──
 
 console.log('╔══════════════════════════════════════════════════════╗');
-console.log('║   Avenues Clinic — CSV File Watcher (API Mode)       ║');
+console.log(`║   ${APP_NAME.substring(0, 30).padEnd(30)} CSV Watcher   ║`);
 console.log('╠══════════════════════════════════════════════════════╣');
 console.log(`║  API URL:  ${API_URL.substring(0, 45).padEnd(45)}║`);
 console.log(`║  Org ID:   ${ORG_ID!.substring(0, 45).padEnd(45)}║`);

@@ -5,6 +5,7 @@ import { MONTHS } from '../src/types';
 
 // Ensure output directory exists
 const outDir = path.join(__dirname, '..', 'data', 'test-samples');
+const facilityName = process.env.SAMPLE_FACILITY_NAME || process.env.NEXT_PUBLIC_DEFAULT_FACILITY_NAME || 'Sample Facility';
 if (!fs.existsSync(outDir)) {
   fs.mkdirSync(outDir, { recursive: true });
 }
@@ -18,7 +19,7 @@ function exportDashboardCSV() {
   // Create headers
   const headers = ['Month', 'Admissions-CASUALTY PATIENT', 'Admissions-DAY PATIENT', 'Admissions-IN-PATIENT', 'Admissions-LABORATORY', 'Billing Statistics-Total Revenue', 'Theatre Cases-THEATRE'];
   
-  let csvContent = `Avenues Clinic\nManagement Dashboard Report With Capture Date 01/01/${year} To 31/12/${year}\n`;
+  let csvContent = `${facilityName}\nManagement Dashboard Report With Capture Date 01/01/${year} To 31/12/${year}\n`;
   csvContent += headers.join(',') + '\n';
   
   for (let i = 0; i < 12; i++) {
@@ -70,7 +71,7 @@ function exportClaimsCSV() {
   const claims = generateSampleClaimsData(year);
   
   const headers = ['Month', 'Total Claims', 'Approved Claims', 'Rejected Claims', 'Claim Amounts'];
-  let csvContent = `Avenues Clinic Claims Report ${year}\n`;
+  let csvContent = `${facilityName} Claims Report ${year}\n`;
   csvContent += headers.join(',') + '\n';
   
   for(let i=0; i<12; i++) {

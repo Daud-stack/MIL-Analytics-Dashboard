@@ -11,10 +11,11 @@ try {
 
 const rootDir = path.resolve(__dirname, '..');
 const scriptPath = path.join(__dirname, 'run-file-watcher.cjs');
+const appName = process.env.APP_NAME || process.env.NEXT_PUBLIC_APP_NAME || 'MIL Analytics Dashboard';
 
 const svc = new Service({
-  name: 'AvenuesClinicalFileWatcher',
-  description: 'Monitors CSV uploads and ingests them into the Avenues Clinic dashboard.',
+  name: process.env.WATCHER_SERVICE_NAME || 'MilAnalyticsFileWatcher',
+  description: `Monitors CSV uploads and ingests them into ${appName}.`,
   script: scriptPath,
   workingDirectory: rootDir,
   wait: 2,

@@ -45,6 +45,47 @@ const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   return null;
 };
 
+function parseClaimDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  const dmy = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (dmy) {
+    const first = Number(dmy[1]);
+    const second = Number(dmy[2]);
+    const year = Number(dmy[3]);
+    const day = first > 12 ? first : second > 12 ? second : first;
+    const month = first > 12 ? second : second > 12 ? first : second;
+    return new Date(year, month - 1, day);
+  }
+  const iso = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  return null;
+}
+
+function findRowValue(row: Record<string, string>, keywords: string[]): string | undefined {
+  const entry = Object.entries(row).find(([key]) => {
+    const normalized = key.toLowerCase();
+    return keywords.some((keyword) => normalized.includes(keyword));
+  });
+  return entry?.[1];
+}
+
+function calculateAverageProcessingDays(rawRows?: Record<string, string>[]): number | null {
+  if (!rawRows?.length) return null;
+
+  const durations = rawRows
+    .map((row) => {
+      const start = parseClaimDate(findRowValue(row, ['claim date', 'submission date', 'submitted']));
+      const end = parseClaimDate(findRowValue(row, ['processed', 'paid date', 'payment date', 'remittance date', 'edi date']));
+      if (!start || !end || end < start) return null;
+      return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    })
+    .filter((days): days is number => days !== null);
+
+  if (durations.length === 0) return null;
+  return durations.reduce((sum, days) => sum + days, 0) / durations.length;
+}
+
 export default function ClaimsPage() {
   const [sortBy, setSortBy] = useState<'amount' | 'count'>('amount');
   const claims = useClaims();
@@ -123,7 +164,7 @@ export default function ClaimsPage() {
   // Top doctors by claims
   const doctorsData = Object.entries(claims.byDoctor)
     .map(([name, data]) => ({
-      name: name.split(' ')[1],
+      name: name || 'Unknown Doctor',
       claims: data.claims,
       approved: data.approved,
       amount: data.amount,
@@ -152,8 +193,7 @@ export default function ClaimsPage() {
   const totalRejected = rejectedDrill.total;
   const approvalRate = totalClaims > 0 ? (totalApproved / totalClaims) * 100 : 0;
   const rejectionRate = totalClaims > 0 ? (totalRejected / totalClaims) * 100 : 0;
-  // TODO: Calculate from actual claims data when processing dates are available
-  const avgProcessingDays = 10;
+  const avgProcessingDays = calculateAverageProcessingDays(claims.rawRows);
 
   const handleExportClaims = () => {
     const exportData = [
@@ -161,7 +201,7 @@ export default function ClaimsPage() {
       { metric: 'Total Claimed Amount', value: formatCurrency(totalClaimed) },
       { metric: 'Approval Rate %', value: approvalRate.toFixed(1) },
       { metric: 'Rejection Rate %', value: rejectionRate.toFixed(1) },
-      { metric: 'Avg Processing Days', value: avgProcessingDays },
+      { metric: 'Avg Processing Days', value: avgProcessingDays !== null ? avgProcessingDays.toFixed(1) : 'Not available' },
       ...monthlyData.map((d) => ({
         metric: `${d.period} - Submitted`,
         value: formatNumber(d.submitted),
@@ -241,7 +281,7 @@ export default function ClaimsPage() {
         />
         <StatCard
           title="Avg Processing Days"
-          value={`${avgProcessingDays} days`}
+          value={avgProcessingDays !== null ? `${avgProcessingDays.toFixed(1)} days` : 'N/A'}
           trend="neutral"
           color="purple"
         />

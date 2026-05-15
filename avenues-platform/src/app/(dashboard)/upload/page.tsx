@@ -9,6 +9,7 @@ import { useStore, useAddYearData, useUploads, useRemoveUpload, useCurrentYear, 
 import { YearData, UploadRecord, UploadCategory, GenericDataset } from '@/types';
 import { parseDashboardCSV, parseLocationCSV, parseClaimsCSV, detectYear, detectFacilityName } from '@/lib/parsers';
 import { parseGenericCSV } from '@/lib/generic-parser';
+import { DEFAULT_FACILITY_NAME } from '@/lib/app-config';
 import { Upload, FileText, CheckCircle, AlertCircle, X, Loader2, Database, Trash2, Calendar, FileType, Info, ChevronRight, File, RefreshCw, Zap, Clock } from 'lucide-react';
 
 interface FileUpload {
@@ -163,7 +164,7 @@ function detectAndParse(csvText: string, manualYear: number | null): {
       const rowCount = lines.length - 1;
       const score = (parsedData?.claims?.totalClaims ?? 0) > 0 ? 100 : 50;
       console.log('[Upload] Detected Claims CSV: Year:', year, 'Claims:', parsedData?.claims?.totalClaims);
-      return { type: 'Claims', facilityName: 'Avenues Clinic', year, parsedData, rowCount, columnScore: score, debugInfo: `Claims: ${parsedData?.claims?.totalClaims || 0} records` };
+      return { type: 'Claims', facilityName: DEFAULT_FACILITY_NAME, year, parsedData, rowCount, columnScore: score, debugInfo: `Claims: ${parsedData?.claims?.totalClaims || 0} records` };
     } catch (e) {
       console.error('[Upload] Claims parse error:', e);
     }
@@ -196,7 +197,7 @@ function detectAndParse(csvText: string, manualYear: number | null): {
       const doctorCount = parsedData?.location?.doctors?.length || 0;
       const score = doctorCount > 0 ? 100 : (parsedData?.location ? 50 : 25);
       console.log('[Upload] Detected Location/LOC CSV: Year:', year, 'Rows:', rowCount, 'Doctors:', doctorCount);
-      return { type: 'Location', facilityName: 'Avenues Clinic', year, parsedData, rowCount, columnScore: score, debugInfo: `Location: ${rowCount} episodes, ${doctorCount} doctors` };
+      return { type: 'Location', facilityName: DEFAULT_FACILITY_NAME, year, parsedData, rowCount, columnScore: score, debugInfo: `Location: ${rowCount} episodes, ${doctorCount} doctors` };
     } catch (e) {
       console.error('[Upload] Location parse error:', e);
     }
@@ -225,7 +226,7 @@ function detectAndParse(csvText: string, manualYear: number | null): {
       const yearMatch = csvText.match(/\b(202[0-9])\b/);
       const year = manualYear || (yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear());
       console.log('[Upload] Fallback: Location parser succeeded. Episodes:', locResult.location.episodes);
-      return { type: 'Location', facilityName: 'Avenues Clinic', year, parsedData: locResult, rowCount: lines.length - 1, columnScore: 75, debugInfo: `Fallback Location: ${locResult.location.episodes} episodes` };
+      return { type: 'Location', facilityName: DEFAULT_FACILITY_NAME, year, parsedData: locResult, rowCount: lines.length - 1, columnScore: 75, debugInfo: `Fallback Location: ${locResult.location.episodes} episodes` };
     }
   } catch (e) { console.warn('[Upload] Location fallback parse failed:', e); }
 
@@ -235,7 +236,7 @@ function detectAndParse(csvText: string, manualYear: number | null): {
     if (claimsResult?.claims && (claimsResult.claims.totalClaims ?? 0) > 0) {
       const year = manualYear || detectYear(csvText);
       console.log('[Upload] Fallback: Claims parser succeeded. Claims:', claimsResult.claims.totalClaims);
-      return { type: 'Claims', facilityName: 'Avenues Clinic', year, parsedData: claimsResult, rowCount: lines.length - 1, columnScore: 75, debugInfo: `Fallback Claims: ${claimsResult.claims.totalClaims} records` };
+      return { type: 'Claims', facilityName: DEFAULT_FACILITY_NAME, year, parsedData: claimsResult, rowCount: lines.length - 1, columnScore: 75, debugInfo: `Fallback Claims: ${claimsResult.claims.totalClaims} records` };
     }
   } catch (e) { console.warn('[Upload] Claims fallback parse failed:', e); }
 

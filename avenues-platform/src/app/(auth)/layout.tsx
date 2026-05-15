@@ -1,3 +1,5 @@
+import { APP_NAME } from "@/lib/app-config";
+
 export default function AuthLayout({
   children,
 }: {
@@ -16,10 +18,10 @@ export default function AuthLayout({
         {/* Logo/Branding */}
         <div className="mb-8 text-center">
           <div className="inline-flex items-center justify-center h-12 w-12 rounded-lg bg-teal-600 mb-4 mx-auto">
-            <span className="text-white font-bold text-lg">A</span>
+            <span className="text-white font-bold text-lg">{APP_NAME.charAt(0).toUpperCase()}</span>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">
-            Avenues Intelligence
+            {APP_NAME}
           </h1>
           <p className="text-slate-400 text-sm">
             Healthcare Analytics & Insights Platform
@@ -38,7 +40,7 @@ export default function AuthLayout({
 
         {/* Footer text */}
         <p className="text-center text-xs text-slate-500 mt-6">
-          © {new Date().getFullYear()} Avenues Clinic. All rights reserved.
+          © {new Date().getFullYear()} {APP_NAME}. All rights reserved.
         </p>
       </div>
     </div>

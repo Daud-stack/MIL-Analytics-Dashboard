@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { MessageCircle, X, Send, Bot, User, Sparkles } from 'lucide-react';
 import { useStore, getLatestNonZeroIndex } from '@/store';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import { APP_NAME } from '@/lib/app-config';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -12,7 +13,7 @@ interface ChatMessage {
 }
 
 const GREETINGS = [
-  "Hello! I'm Avenues Intelligence. Ask me anything about your clinical or financial data.",
+  `Hello! I'm ${APP_NAME}. Ask me anything about your clinical or financial data.`,
   "Hi there! I can answer questions about revenue, admissions, occupancy, claims, and more.",
   "Welcome! Try asking me: 'What was total revenue?' or 'How are admissions trending?'"
 ];
@@ -265,7 +266,7 @@ export function AiAssistant() {
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-sm">Avenues Intelligence</h3>
+              <h3 className="font-semibold text-sm">{APP_NAME}</h3>
               <p className="text-xs text-teal-100">Ask about your data</p>
             </div>
           </div>

@@ -13,6 +13,8 @@ export default function SettingsPage() {
   const [name, setName] = useState(session?.user?.name || '');
   const [email] = useState(session?.user?.email || '');
   const userRole = (session?.user as { role?: string })?.role || 'VIEWER';
+  const orgName = session?.user?.orgName || 'Assigned organization';
+  const orgId = session?.user?.orgId || 'Not assigned';
 
   const [notifUploads, setNotifUploads] = useState(true);
   const [notifAlerts, setNotifAlerts] = useState(true);
@@ -189,22 +191,22 @@ export default function SettingsPage() {
                     <Building2 className="h-7 w-7 text-teal-600" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Avenues Clinic</h3>
-                    <p className="text-sm text-gray-500">Medical Investments Limited (MIL)</p>
+                    <h3 className="text-lg font-semibold text-gray-900">{orgName}</h3>
+                    <p className="text-sm text-gray-500">Organization linked to your signed-in account</p>
                   </div>
                 </div>
                 <div className="mt-6 grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-gray-500">Organization ID</p>
-                    <p className="text-sm font-mono text-gray-700 mt-0.5">avenues-clinic</p>
+                    <p className="text-sm font-mono text-gray-700 mt-0.5">{orgId}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Database</p>
-                    <p className="text-sm font-mono text-gray-700 mt-0.5">Neon PostgreSQL</p>
+                    <p className="text-xs text-gray-500">Role</p>
+                    <p className="text-sm font-mono text-gray-700 mt-0.5">{userRole}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">Deployment</p>
-                    <p className="text-sm font-mono text-gray-700 mt-0.5">Vercel (Production)</p>
+                    <p className="text-xs text-gray-500">Signed-in Email</p>
+                    <p className="text-sm font-mono text-gray-700 mt-0.5">{email || 'Unavailable'}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Webhook URL</p>

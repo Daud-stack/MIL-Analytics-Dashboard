@@ -54,12 +54,16 @@ export default function TheatrePage() {
   const casesDrill = useDrillDown(dashData?.theatreCases);
   const minutesDrill = useDrillDown(dashData?.theatreMinutes);
   const utilDrill = useDrillDown(dashData?.theatreUtil);
-  const revDrill = useDrillDown(dashData?.monthRevenue);
-
-  // Theatre revenue is estimated as 40% of total facility revenue since theatre-specific
-  // revenue data is not available. This is a placeholder estimate and should be updated
-  // when actual theatre revenue data becomes available.
-  const THEATRE_REVENUE_SHARE = 0.4;
+  const theatreRevenueSeries = React.useMemo(() => {
+    if (!dashData?.rawColumns) return undefined;
+    const entry = Object.entries(dashData.rawColumns).find(([name]) => {
+      const normalized = name.toLowerCase();
+      return normalized.includes('theatre') && (normalized.includes('revenue') || normalized.includes('rev'));
+    });
+    return entry?.[1];
+  }, [dashData]);
+  const revDrill = useDrillDown(theatreRevenueSeries);
+  const hasTheatreRevenue = !!theatreRevenueSeries?.some((value) => value > 0);
 
   // Empty state
   if (!dashData) {
@@ -89,7 +93,7 @@ export default function TheatrePage() {
   const totalCases = casesDrill.total;
   const activePoints = casesDrill.values.filter(v => v > 0).length || 1;
   const avgCasesPerPeriod = totalCases / activePoints;
-  const totalRevenue = revDrill.total;
+  const totalRevenue = hasTheatreRevenue ? revDrill.total : 0;
   const revenuePerCase = totalCases > 0 ? totalRevenue / totalCases : 0;
   const activeUtil = utilDrill.values.filter(v => v > 0).length || 1;
   const avgUtilization = utilDrill.total / activeUtil;
@@ -99,12 +103,12 @@ export default function TheatrePage() {
     period: label,
     cases: casesDrill.values[i],
     utilization: utilDrill.values[i],
-    revenue: revDrill.values[i] * THEATRE_REVENUE_SHARE,
+    revenue: hasTheatreRevenue ? revDrill.values[i] : 0,
   }));
 
   const revenuePerCaseData = casesDrill.labels.map((label, i) => ({
     period: label,
-    revenue: casesDrill.values[i] > 0 ? (revDrill.values[i] * THEATRE_REVENUE_SHARE) / casesDrill.values[i] : 0,
+    revenue: hasTheatreRevenue && casesDrill.values[i] > 0 ? revDrill.values[i] / casesDrill.values[i] : 0,
   }));
 
   const minutesPerCaseData = casesDrill.labels.map((label, i) => ({
@@ -132,8 +136,8 @@ export default function TheatrePage() {
     const exportData = [
       { metric: 'Total Cases', value: formatNumber(totalCases) },
       { metric: `${periodLabel} Average`, value: formatNumber(Math.round(avgCasesPerPeriod)) },
-      { metric: 'Total Revenue', value: formatCurrency(totalRevenue * THEATRE_REVENUE_SHARE) },
-      { metric: 'Revenue/Case', value: formatCurrency(revenuePerCase) },
+      { metric: 'Theatre Revenue', value: hasTheatreRevenue ? formatCurrency(totalRevenue) : 'Not available' },
+      { metric: 'Revenue/Case', value: hasTheatreRevenue ? formatCurrency(revenuePerCase) : 'Not available' },
       { metric: 'Avg Utilization %', value: avgUtilization.toFixed(1) },
       ...casesDrill.points.map((pt, idx) => ({
         metric: `${pt.label} - Cases`,
@@ -154,10 +158,10 @@ export default function TheatrePage() {
           <p className="mt-1 text-sm text-gray-500">
             {casesDrill.isFiltered ? `Filtered view · ${casesDrill.points.length} ${granularity}(s)` : 'Surgical cases, utilization, and revenue analytics'}
           </p>
-          <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
+          {!hasTheatreRevenue && <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
             <AlertCircle className="h-3 w-3" />
-            Theatre revenue is estimated as {Math.round(THEATRE_REVENUE_SHARE * 100)}% of total facility revenue
-          </p>
+            Theatre revenue is unavailable because no theatre-specific revenue column was detected.
+          </p>}
         </div>
         <Button onClick={handleExport} variant="outline" size="sm" className="gap-2">
           <Download className="h-4 w-4" />
@@ -180,14 +184,14 @@ export default function TheatrePage() {
           color="blue"
         />
         <StatCard
-          title="Revenue"
-          value={formatCurrency(totalRevenue * THEATRE_REVENUE_SHARE)}
+          title="Theatre Revenue"
+          value={hasTheatreRevenue ? formatCurrency(totalRevenue) : 'N/A'}
           trend="neutral"
           color="green"
         />
         <StatCard
           title="Revenue/Case"
-          value={formatCurrency(revenuePerCase)}
+          value={hasTheatreRevenue ? formatCurrency(revenuePerCase) : 'N/A'}
           trend="neutral"
           color="amber"
         />
@@ -315,9 +319,9 @@ export default function TheatrePage() {
                   <td className="px-5 py-3 text-gray-900">{pt.label}</td>
                   <td className="px-5 py-3 text-right text-gray-700 font-medium">{formatNumber(pt.value)}</td>
                   <td className="px-5 py-3 text-right text-gray-600">{formatNumber(minutesDrill.values[idx] || 0)}</td>
-                  <td className="px-5 py-3 text-right text-gray-600">{formatCurrency((revDrill.values[idx] || 0) * THEATRE_REVENUE_SHARE)}</td>
+                  <td className="px-5 py-3 text-right text-gray-600">{hasTheatreRevenue ? formatCurrency(revDrill.values[idx] || 0) : 'N/A'}</td>
                   <td className="px-5 py-3 text-right text-gray-700 font-medium">
-                    {pt.value > 0 ? formatCurrency(((revDrill.values[idx] || 0) * THEATRE_REVENUE_SHARE) / pt.value) : formatCurrency(0)}
+                    {hasTheatreRevenue && pt.value > 0 ? formatCurrency((revDrill.values[idx] || 0) / pt.value) : 'N/A'}
                   </td>
                   <td className="px-5 py-3 text-right text-gray-600">{(utilDrill.values[idx] || 0).toFixed(1)}%</td>
                 </tr>
@@ -327,8 +331,8 @@ export default function TheatrePage() {
                 <td className="px-5 py-3 text-gray-900">Total</td>
                 <td className="px-5 py-3 text-right text-gray-900">{formatNumber(totalCases)}</td>
                 <td className="px-5 py-3 text-right text-gray-700">{formatNumber(minutesDrill.total)}</td>
-                <td className="px-5 py-3 text-right text-gray-700">{formatCurrency(totalRevenue * THEATRE_REVENUE_SHARE)}</td>
-                <td className="px-5 py-3 text-right text-gray-900">{formatCurrency(revenuePerCase)}</td>
+                <td className="px-5 py-3 text-right text-gray-700">{hasTheatreRevenue ? formatCurrency(totalRevenue) : 'N/A'}</td>
+                <td className="px-5 py-3 text-right text-gray-900">{hasTheatreRevenue ? formatCurrency(revenuePerCase) : 'N/A'}</td>
                 <td className="px-5 py-3 text-right text-gray-700">{avgUtilization.toFixed(1)}%</td>
               </tr>
             </tbody>

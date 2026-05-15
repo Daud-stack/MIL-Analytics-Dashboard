@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { Providers } from "@/components/providers";
+import { APP_NAME } from "@/lib/app-config";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Avenues Clinic Intelligence Platform",
+  title: APP_NAME,
   description: "Healthcare Analytics Dashboard",
 };
 

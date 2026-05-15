@@ -7,6 +7,7 @@
 
 import Papa from 'papaparse';
 import { DashboardMetrics, LocationData, ClaimsMetrics, YearData, ConversionMetrics, ConversionRecord } from '@/types';
+import { DEFAULT_FACILITY_NAME } from '@/lib/app-config';
 
 // ===== COLUMN DEFINITIONS =====
 
@@ -97,7 +98,7 @@ export function detectFacilityName(csvText: string): string {
   if (lines.length > 0 && lines[0].trim()) {
     return lines[0].trim();
   }
-  return 'Avenues Clinic';
+  return DEFAULT_FACILITY_NAME;
 }
 
 /**
@@ -287,7 +288,7 @@ export function parseDashboardCSV(csvText: string): YearData {
   const lines = rawLines.filter(l => l.length > 0);
 
   // Extract facility name and year
-  const facilityName = lines[0] || 'Avenues Clinic';
+  const facilityName = lines[0] || DEFAULT_FACILITY_NAME;
   const line2 = lines[1] || '';
   const yearMatch = line2.match(/\b(20\d{2})\b/);
   const year = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/store/sidebar";
+import { APP_NAME } from "@/lib/app-config";
 import {
   Upload,
   LayoutDashboard,
@@ -148,14 +149,9 @@ function SidebarContent() {
     <div className="flex flex-col h-full bg-slate-900 dark:bg-slate-950">
       {/* Logo Area */}
       <div className="border-b border-slate-700 px-6 py-5">
-        <div className="flex items-baseline gap-1">
-          <h1 className="text-base font-bold text-white">
-            Avenues
-          </h1>
-          <span className="text-base font-semibold text-teal-400">
-            Intelligence
-          </span>
-        </div>
+        <h1 className="text-base font-bold text-white">
+          {APP_NAME}
+        </h1>
       </div>
 
       {/* Navigation */}
@@ -223,7 +219,7 @@ function SidebarContent() {
 
       {/* Footer */}
       <div className="border-t border-slate-700 px-4 py-3 text-xs text-slate-500">
-        <p>© Avenues Clinic Intelligence</p>
+        <p>© {APP_NAME}</p>
       </div>
     </div>
   );

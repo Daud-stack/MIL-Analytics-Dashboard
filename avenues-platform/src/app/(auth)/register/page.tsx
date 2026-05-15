@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { User, Mail, Lock, AlertCircle, Loader2, CheckCircle } from "lucide-react";
+import { APP_NAME, DEFAULT_FACILITY_NAME } from "@/lib/app-config";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -13,7 +14,7 @@ export default function RegisterPage() {
     email: "",
     password: "",
     confirmPassword: "",
-    organization: "Avenues Clinic",
+    organization: DEFAULT_FACILITY_NAME === "Unknown Facility" ? "" : DEFAULT_FACILITY_NAME,
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -136,7 +137,7 @@ export default function RegisterPage() {
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-white">Create Account</h2>
         <p className="text-slate-400 text-sm mt-1">
-          Join Avenues Intelligence Platform
+          Join {APP_NAME}
         </p>
       </div>
 

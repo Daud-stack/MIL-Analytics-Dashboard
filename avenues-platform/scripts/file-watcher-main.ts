@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Avenues Clinic automated CSV file watcher.
+ * Automated CSV file watcher.
  *
  * Monitors a configurable directory for new CSV files, detects Dashboard,
  * Location, or Claims uploads, parses them with the shared app parsers, and
@@ -27,9 +27,10 @@ import { parseGenericCSV } from '../src/lib/generic-parser';
 type SupportedFileType = 'Dashboard' | 'Location' | 'Claims' | 'Generic';
 type DetectedFileType = SupportedFileType;
 
-const API_URL = (process.env.API_URL || 'https://mil-analytics-dashboard.vercel.app').replace(/\/$/, '');
+const API_URL = (process.env.API_URL || '').replace(/\/$/, '');
 const INGEST_API_KEY = process.env.INGEST_API_KEY;
 const ORG_ID = process.env.ORG_ID;
+const APP_NAME = process.env.APP_NAME || process.env.NEXT_PUBLIC_APP_NAME || 'MIL Analytics Dashboard';
 const WATCH_DIR = path.resolve(process.env.WATCH_DIR || './uploads');
 const ARCHIVE_DIR = path.resolve(process.env.ARCHIVE_DIR || './archived');
 const POLL_MS = parseInt(process.env.POLL_MS || '2000', 10);
@@ -56,6 +57,10 @@ function validateConfig(): void {
 
   if (!ORG_ID) {
     errors.push('ORG_ID environment variable is required');
+  }
+
+  if (!API_URL) {
+    errors.push('API_URL environment variable is required');
   }
 
   if (errors.length > 0) {
@@ -301,7 +306,7 @@ async function processExistingFiles(): Promise<void> {
 
 function printBanner(): void {
   console.log('============================================================');
-  console.log('Avenues Clinic CSV File Watcher');
+  console.log(`${APP_NAME} CSV File Watcher`);
   console.log('============================================================');
   console.log(`API URL : ${API_URL}`);
   console.log(`Org ID  : ${ORG_ID}`);

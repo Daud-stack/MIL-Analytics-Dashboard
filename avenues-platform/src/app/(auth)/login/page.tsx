@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Mail, Lock, AlertCircle, Loader2 } from "lucide-react";
+import { APP_NAME } from "@/lib/app-config";
 
 export default function LoginPage() {
   return (
@@ -21,11 +22,6 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  const handleDemoCredentials = () => {
-    setEmail("admin@avenues.clinic");
-    setPassword("admin123");
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,34 +59,11 @@ function LoginForm() {
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-white">Sign In</h2>
         <p className="text-slate-400 text-sm mt-1">
-          Welcome back to Avenues Intelligence
+          Welcome back to {APP_NAME}
         </p>
       </div>
 
       {/* Demo credentials hint — only in development */}
-      {process.env.NODE_ENV === "development" && (
-        <div className="mb-6 rounded-lg bg-teal-900/20 border border-teal-700/30 p-3">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 text-teal-400 mt-0.5">
-              <AlertCircle className="h-4 w-4" />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-teal-300 font-medium">Dev Mode</p>
-              <p className="text-xs text-teal-400/80 mt-0.5">
-                Seed accounts: <code className="bg-teal-900/50 px-1.5 py-0.5 rounded text-teal-300 font-mono text-xs">admin@avenues.clinic</code> / <code className="bg-teal-900/50 px-1.5 py-0.5 rounded text-teal-300 font-mono text-xs">admin123</code>
-              </p>
-              <button
-                type="button"
-                onClick={handleDemoCredentials}
-                className="mt-2 text-xs font-medium text-teal-400 hover:text-teal-300 transition-colors"
-              >
-                Fill demo credentials
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Error message */}
       {error && (
         <div className="mb-6 rounded-lg bg-rose-900/20 border border-rose-700/30 p-4 flex items-start gap-3">
@@ -113,7 +86,7 @@ function LoginForm() {
             <input
               id="email"
               type="email"
-              placeholder="admin@avenues.clinic"
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required

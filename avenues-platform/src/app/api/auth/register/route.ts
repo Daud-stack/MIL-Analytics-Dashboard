@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
+import { DEFAULT_FACILITY_NAME } from "@/lib/app-config";
 import {
   enforceRateLimit,
   getClientIp,
@@ -16,7 +17,7 @@ const registerSchema = z.object({
     .string()
     .min(12, "Password must be at least 12 characters")
     .max(256, "Password is too long"),
-  organization: z.string().trim().min(1).max(120).optional().default("Avenues Clinic"),
+  organization: z.string().trim().min(1).max(120).optional().default(DEFAULT_FACILITY_NAME),
   role: z.enum(["ADMIN", "ANALYST", "VIEWER"]).optional().default("ANALYST"),
 });
 
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
     const assignedRole = adminRequest ? data.role : "ANALYST";
     const organizationName = adminRequest
       ? data.organization
-      : process.env.DEFAULT_ORGANIZATION_NAME || "Avenues Clinic";
+      : process.env.DEFAULT_ORGANIZATION_NAME || DEFAULT_FACILITY_NAME;
 
     const orgSlug = organizationName
       .toLowerCase()

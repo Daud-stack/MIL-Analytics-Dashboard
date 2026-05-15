@@ -5,6 +5,7 @@ import { Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { APP_NAME } from '@/lib/app-config';
 
 interface ExportPdfButtonProps {
   targetId: string;
@@ -12,7 +13,7 @@ interface ExportPdfButtonProps {
   className?: string;
 }
 
-export function ExportPdfButton({ targetId, filename = 'Avenues_Executive_Report', className }: ExportPdfButtonProps) {
+export function ExportPdfButton({ targetId, filename = 'Executive_Report', className }: ExportPdfButtonProps) {
   const [isExporting, setIsExporting] = useState(false);
 
   const handleExport = async () => {
@@ -52,7 +53,7 @@ export function ExportPdfButton({ targetId, filename = 'Avenues_Executive_Report
       // Add a header
       pdf.setFontSize(14);
       pdf.setTextColor(15, 23, 42); // slate-900
-      pdf.text('Avenues Clinic - Executive Analytics Report', 10, 15);
+      pdf.text(`${APP_NAME} - Executive Analytics Report`, 10, 15);
       
       pdf.setFontSize(10);
       pdf.setTextColor(100, 116, 139); // slate-500

@@ -13,7 +13,6 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ComposedChart,
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
@@ -24,8 +23,6 @@ import { useDashboard } from '@/store';
 interface ChartData {
   month?: string;
   ward?: string;
-  occupied?: number;
-  capacity?: number;
   patientDays?: number;
   occupancyPct?: number;
 }
@@ -44,68 +41,6 @@ const CustomTooltip = ({ active, payload, label }: ChartTooltipProps) => {
     );
   }
   return null;
-};
-
-const WARDS = ['ICU', 'General Ward', 'Maternity', 'Pediatric', 'Surgical', 'Medical'];
-
-const monthlyBedFeeData = [
-  { month: 'Jan', beds: 223, patientDays: 4523, revenue: 642775 },
-  { month: 'Feb', beds: 223, patientDays: 4312, revenue: 615216 },
-  { month: 'Mar', beds: 223, patientDays: 4756, revenue: 679104 },
-  { month: 'Apr', beds: 223, patientDays: 4894, revenue: 698454 },
-  { month: 'May', beds: 223, patientDays: 5126, revenue: 731882 },
-  { month: 'Jun', beds: 223, patientDays: 5342, revenue: 762684 },
-  { month: 'Jul', beds: 223, patientDays: 5501, revenue: 785928 },
-  { month: 'Aug', beds: 223, patientDays: 5378, revenue: 767568 },
-  { month: 'Sep', beds: 223, patientDays: 5123, revenue: 731524 },
-  { month: 'Oct', beds: 223, patientDays: 4876, revenue: 696368 },
-  { month: 'Nov', beds: 223, patientDays: 4654, revenue: 664452 },
-  { month: 'Dec', beds: 223, patientDays: 4832, revenue: 689856 },
-];
-
-const wardComparisonData = [
-  { ward: 'ICU', beds: 32, patientDays: 8526, revenue: 1274900, avgFee: 1285, occupancy: 88 },
-  { ward: 'Cardiology', beds: 48, patientDays: 10234, revenue: 1535100, avgFee: 1500, occupancy: 74 },
-  { ward: 'General Ward', beds: 64, patientDays: 12345, revenue: 1400000, avgFee: 1134, occupancy: 64 },
-  { ward: 'Orthopedics', beds: 40, patientDays: 7236, revenue: 1021200, avgFee: 1412, occupancy: 67 },
-  { ward: 'Obstetrics', beds: 28, patientDays: 6142, revenue: 737040, avgFee: 1200, occupancy: 76 },
-  { ward: 'Pediatrics', beds: 28, patientDays: 428, revenue: 145320, avgFee: 340, occupancy: 52 },
-  { ward: 'Gynecology', beds: 22, patientDays: 390, revenue: 132450, avgFee: 340, occupancy: 61 },
-  { ward: 'ENT', beds: 18, patientDays: 278, revenue: 94280, avgFee: 340, occupancy: 43 },
-];
-
-const revenuePerPatientDayTrend = [
-  { month: 'Jan', revenue: 135.6, benchmark: 140 },
-  { month: 'Feb', revenue: 135.0, benchmark: 140 },
-  { month: 'Mar', revenue: 135.1, benchmark: 140 },
-  { month: 'Apr', revenue: 134.8, benchmark: 140 },
-  { month: 'May', revenue: 135.2, benchmark: 140 },
-  { month: 'Jun', revenue: 135.4, benchmark: 140 },
-  { month: 'Jul', revenue: 135.1, benchmark: 140 },
-  { month: 'Aug', revenue: 135.2, benchmark: 140 },
-  { month: 'Sep', revenue: 135.2, benchmark: 140 },
-  { month: 'Oct', revenue: 135.0, benchmark: 140 },
-  { month: 'Nov', revenue: 135.1, benchmark: 140 },
-  { month: 'Dec', revenue: 135.2, benchmark: 140 },
-];
-
-const wardHeatmapData = [
-  { ward: 'ICU', jan: 92, feb: 95, mar: 98, apr: 96, may: 100, jun: 97, jul: 102, aug: 98, sep: 94, oct: 90, nov: 88, dec: 91 },
-  { ward: 'Cardiology', jan: 78, feb: 80, mar: 82, apr: 80, may: 85, jun: 83, jul: 88, aug: 84, sep: 80, oct: 76, nov: 74, dec: 78 },
-  { ward: 'General Ward', jan: 73, feb: 75, mar: 78, apr: 76, may: 80, jun: 78, jul: 82, aug: 80, sep: 76, oct: 72, nov: 70, dec: 74 },
-  { ward: 'Orthopedics', jan: 67, feb: 69, mar: 72, apr: 70, may: 75, jun: 73, jul: 78, aug: 76, sep: 72, oct: 68, nov: 65, dec: 69 },
-  { ward: 'Obstetrics', jan: 64, feb: 66, mar: 69, apr: 67, may: 72, jun: 70, jul: 75, aug: 73, sep: 70, oct: 66, nov: 63, dec: 67 },
-  { ward: 'Pediatrics', jan: 52, feb: 54, mar: 57, apr: 55, may: 60, jun: 58, jul: 63, aug: 61, sep: 58, oct: 54, nov: 51, dec: 55 },
-  { ward: 'Gynecology', jan: 61, feb: 63, mar: 66, apr: 64, may: 69, jun: 67, jul: 72, aug: 70, sep: 67, oct: 63, nov: 60, dec: 64 },
-  { ward: 'ENT', jan: 43, feb: 45, mar: 48, apr: 46, may: 51, jun: 49, jul: 54, aug: 52, sep: 49, oct: 45, nov: 42, dec: 46 },
-];
-
-const getHeatmapColor = (value: number) => {
-  if (value >= 95) return 'bg-red-200';
-  if (value >= 85) return 'bg-orange-200';
-  if (value >= 75) return 'bg-yellow-200';
-  if (value >= 65) return 'bg-green-200';
-  return 'bg-blue-200';
 };
 
 export default function WardBedsPage() {
@@ -127,9 +62,13 @@ export default function WardBedsPage() {
   }
 
   const metrics = dashData;
+  const wardNames = Array.from(new Set([
+    ...Object.keys(metrics.pctOccWard || {}),
+    ...Object.keys(metrics.patDaysWard || {}),
+  ])).sort();
 
   // KPI calculations
-  const totalWards = WARDS.length;
+  const totalWards = wardNames.length;
   const totalPatientDays = metrics.patDaysWard ? Object.values(metrics.patDaysWard).reduce((sum, arr) => sum + arr.reduce((a, b) => a + b, 0), 0) : 0;
   const pctOccWardCount = metrics.pctOccWard ? Object.keys(metrics.pctOccWard).length : 0;
   const avgOccupancy = pctOccWardCount > 0
@@ -145,15 +84,13 @@ export default function WardBedsPage() {
       })()
     : 0;
 
-  // Ward capacity vs occupied
-  const wardCapacityData = WARDS.map((ward, idx) => {
-    const capacity = 20 + idx * 5;
-    const occupied = Math.round(capacity * (avgOccupancy / 100));
+  const wardOccupancyData = wardNames.map((ward) => {
+    const values = (metrics.pctOccWard[ward] || []).filter((value) => value > 0);
     return {
       ward,
-      capacity,
-      occupied,
-      utilization: (occupied / capacity) * 100,
+      occupancyPct: values.length > 0
+        ? values.reduce((sum, value) => sum + value, 0) / values.length
+        : 0,
     };
   });
 
@@ -169,22 +106,22 @@ export default function WardBedsPage() {
   const mergedTrendData: ChartRecord[] = [];
   for (let i = 0; i < 12; i++) {
     const monthData: ChartRecord = { month: MONTHS[i].substring(0, 3) };
-    WARDS.forEach((ward) => {
-      const wardData = metrics.pctOccWard[ward] || metrics.theatrePctOcc;
-      monthData[ward] = wardData[i];
+    wardNames.forEach((ward) => {
+      const wardData = metrics.pctOccWard[ward] || new Array(12).fill(0);
+      monthData[ward] = wardData[i] || 0;
     });
     mergedTrendData.push(monthData);
   }
 
   // Ward utilization matrix (heatmap style)
-  const wardUtilizationMatrix = WARDS.map((ward, idx) => {
-    const wardData = metrics.pctOccWard[ward] || metrics.theatrePctOcc;
+  const wardUtilizationMatrix = wardNames.map((ward) => {
+    const wardData = metrics.pctOccWard[ward] || new Array(12).fill(0);
+    const activeValues = wardData.filter((value) => value > 0);
     return {
       ward,
-      utilization: wardData.reduce((a, b) => a + b, 0) / wardData.length,
-      minOcc: Math.min(...wardData),
-      maxOcc: Math.max(...wardData),
-      capacity: 20 + idx * 5,
+      utilization: activeValues.length > 0 ? activeValues.reduce((a, b) => a + b, 0) / activeValues.length : 0,
+      minOcc: activeValues.length > 0 ? Math.min(...activeValues) : 0,
+      maxOcc: activeValues.length > 0 ? Math.max(...activeValues) : 0,
       patientDays: metrics.patDaysWard[ward]?.reduce((a, b) => a + b, 0) || 0,
     };
   });
@@ -250,12 +187,12 @@ export default function WardBedsPage() {
         {/* Ward Capacity vs Occupied */}
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-gray-900">Ward Capacity vs Occupied</h2>
-            <p className="mt-1 text-xs text-gray-500">Current bed capacity and occupancy by ward</p>
+            <h2 className="text-sm font-semibold text-gray-900">Average Occupancy by Ward</h2>
+            <p className="mt-1 text-xs text-gray-500">Calculated from uploaded ward occupancy data</p>
           </div>
           <div className="px-5 pb-5">
             <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={wardCapacityData}>
+              <BarChart data={wardOccupancyData}>
                 <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
                 <XAxis
                   dataKey="ward"
@@ -269,8 +206,7 @@ export default function WardBedsPage() {
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
-                <Bar dataKey="capacity" fill="#cbd5e1" name="Capacity" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="occupied" fill="#0d9488" name="Occupied" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="occupancyPct" fill="#0d9488" name="Avg Occupancy %" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -310,7 +246,7 @@ export default function WardBedsPage() {
               <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
               <Legend />
-              {WARDS.map((ward, idx) => {
+              {wardNames.map((ward, idx) => {
                 const wardColors = ['#0d9488', '#475569', '#d97706', '#e11d48', '#7c3aed', '#0284c7'];
                 return <Line key={idx} type="monotone" dataKey={ward} stroke={wardColors[idx % wardColors.length]} strokeWidth={2} dot={false} />;
               })}
@@ -323,14 +259,13 @@ export default function WardBedsPage() {
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 px-5 py-4">
           <h2 className="text-sm font-semibold text-gray-900">Ward Performance Summary</h2>
-          <p className="mt-1 text-xs text-gray-500">Capacity, occupancy, and patient days by ward</p>
+          <p className="mt-1 text-xs text-gray-500">Occupancy and patient days by ward</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
                 <th className="px-5 py-3 text-left text-xs font-semibold text-gray-600">Ward</th>
-                <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600">Bed Capacity</th>
                 <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600">Avg Occupancy %</th>
                 <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600">Min Occupancy %</th>
                 <th className="px-5 py-3 text-right text-xs font-semibold text-gray-600">Max Occupancy %</th>
@@ -341,7 +276,6 @@ export default function WardBedsPage() {
               {wardUtilizationMatrix.map((ward, idx) => (
                 <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-5 py-3 text-sm font-medium text-gray-900">{ward.ward}</td>
-                  <td className="px-5 py-3 text-right text-sm text-gray-600">{formatNumber(ward.capacity)}</td>
                   <td className="px-5 py-3 text-right text-sm text-gray-600">
                     <span
                       className="inline-block rounded px-2 py-1 text-xs font-medium text-gray-900"
