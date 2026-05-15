@@ -125,6 +125,15 @@ export function FilterBar() {
 
       <span className="text-slate-300 dark:text-slate-600">|</span>
 
+      {(granularity === "day" || granularity === "week") && (
+        <>
+          <span className="rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            Distributed from monthly totals
+          </span>
+          <span className="text-slate-300 dark:text-slate-600">|</span>
+        </>
+      )}
+
       {/* Month Badge (from header selector) */}
       {month !== "Full Year" && (
         <div className="inline-flex items-center gap-1 rounded-md bg-slate-200 dark:bg-slate-700 px-2 py-1 text-slate-700 dark:text-slate-300">

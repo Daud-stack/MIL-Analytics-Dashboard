@@ -57,6 +57,20 @@ const currentYear = new Date().getFullYear();
 const FULL_YEAR_RANGE: DateRange = { startMonth: 0, endMonth: 11 };
 const ALL_MONTHS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
+function sanitizeMonths(months: number[]): number[] {
+  return Array.from(
+    new Set(months.filter((month) => Number.isInteger(month) && month >= 0 && month <= 11))
+  ).sort((a, b) => a - b);
+}
+
+function normalizeRange(range: DateRange): DateRange {
+  const startMonth = Math.max(0, Math.min(11, Math.floor(range.startMonth)));
+  const endMonth = Math.max(0, Math.min(11, Math.floor(range.endMonth)));
+  return startMonth <= endMonth
+    ? { startMonth, endMonth }
+    : { startMonth: endMonth, endMonth: startMonth };
+}
+
 export const useFilterStore = create<FilterState>((set) => ({
   year: currentYear,
   month: "Full Year",
@@ -138,20 +152,29 @@ export const useFilterStore = create<FilterState>((set) => ({
   },
 
   setSelectedMonths: (months) => {
-    const sorted = [...months].sort((a, b) => a - b);
+    const sorted = sanitizeMonths(months);
+    const nextMonths = sorted.length > 0 ? sorted : ALL_MONTHS;
     set({
-      selectedMonths: sorted,
+      selectedMonths: nextMonths,
       dateRange: {
-        startMonth: sorted[0] ?? 0,
-        endMonth: sorted[sorted.length - 1] ?? 11,
+        startMonth: nextMonths[0],
+        endMonth: nextMonths[nextMonths.length - 1],
       },
+      selectedQuarter: undefined,
+      month: nextMonths.length === 12 ? "Full Year" : MONTH_NAMES[nextMonths[0]],
     });
   },
 
   setDateRange: (dateRange) => {
+    const normalized = normalizeRange(dateRange);
     const months = [];
-    for (let i = dateRange.startMonth; i <= dateRange.endMonth; i++) months.push(i);
-    set({ dateRange, selectedMonths: months });
+    for (let i = normalized.startMonth; i <= normalized.endMonth; i++) months.push(i);
+    set({
+      dateRange: normalized,
+      selectedMonths: months,
+      selectedQuarter: undefined,
+      month: months.length === 12 ? "Full Year" : MONTH_NAMES[months[0]],
+    });
   },
 
   resetDrillDown: () =>

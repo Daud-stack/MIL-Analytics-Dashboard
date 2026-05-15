@@ -33,6 +33,8 @@ export interface DrillDownResult {
   selectedMonths: number[];
   /** Whether we're viewing the full year or a subset */
   isFiltered: boolean;
+  /** Day/week points are distributed from monthly source totals, not raw daily rows */
+  isEstimated: boolean;
 }
 
 // ─── Aggregation Logic ───────────────────────────────────────
@@ -40,24 +42,27 @@ export interface DrillDownResult {
 /**
  * Aggregate a 12-element monthly array into quarterly buckets.
  */
-function toQuarterly(data: number[]): DrillDownPoint[] {
+function toQuarterly(data: number[], selectedMonths?: Set<number>): DrillDownPoint[] {
   return Object.entries(QUARTERS).map(([label, range]) => {
     let sum = 0;
     const indices: number[] = [];
     for (let i = range.startMonth; i <= range.endMonth; i++) {
+      if (selectedMonths && !selectedMonths.has(i)) continue;
       sum += data[i] || 0;
       indices.push(i);
     }
     return { label, value: sum, monthIndices: indices };
-  });
+  }).filter((point) => point.monthIndices.length > 0);
 }
 
 /**
  * Aggregate a 12-element monthly array into a single yearly total.
  */
-function toYearly(data: number[]): DrillDownPoint[] {
-  const sum = data.reduce((acc, v) => acc + (v || 0), 0);
-  return [{ label: 'Total', value: sum, monthIndices: Array.from({ length: 12 }, (_, i) => i) }];
+function toYearly(data: number[], selectedMonths?: Set<number>): DrillDownPoint[] {
+  const monthIndices = Array.from({ length: 12 }, (_, i) => i)
+    .filter((idx) => !selectedMonths || selectedMonths.has(idx));
+  const sum = monthIndices.reduce((acc, idx) => acc + (data[idx] || 0), 0);
+  return [{ label: selectedMonths ? 'Selected Total' : 'Total', value: sum, monthIndices }];
 }
 
 /**
@@ -76,10 +81,11 @@ function toMonthly(data: number[]): DrillDownPoint[] {
  * Splits each month into ~4.33 weeks, distributing the value evenly.
  * This is an approximation since the source data is monthly.
  */
-function toWeekly(data: number[]): DrillDownPoint[] {
+function toWeekly(data: number[], selectedMonths?: Set<number>): DrillDownPoint[] {
   const points: DrillDownPoint[] = [];
   let weekNum = 1;
   for (let m = 0; m < 12; m++) {
+    if (selectedMonths && !selectedMonths.has(m)) continue;
     const monthVal = data[m] || 0;
     // Each month has ~4.33 weeks; use 4 weeks for simplicity
     const weeksInMonth = m === 1 ? 4 : (([3, 5, 8, 10].includes(m)) ? 4 : 5); // rough
@@ -100,11 +106,12 @@ function toWeekly(data: number[]): DrillDownPoint[] {
  * Approximate daily breakdown from monthly data.
  * Distributes each month's value evenly across its days.
  */
-function toDaily(data: number[]): DrillDownPoint[] {
+function toDaily(data: number[], selectedMonths?: Set<number>): DrillDownPoint[] {
   const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   const points: DrillDownPoint[] = [];
   let dayOfYear = 1;
   for (let m = 0; m < 12; m++) {
+    if (selectedMonths && !selectedMonths.has(m)) continue;
     const monthVal = data[m] || 0;
     const days = daysInMonth[m];
     const perDay = monthVal / days;
@@ -140,20 +147,23 @@ export function useDrillDown(monthlyData: number[] | undefined): DrillDownResult
       ? monthlyData
       : new Array(12).fill(0);
 
+    const isFiltered = selectedMonths.length < 12;
+    const selectedSet = new Set(selectedMonths);
+
     // Step 1: Aggregate by granularity
     let allPoints: DrillDownPoint[];
     switch (granularity) {
       case 'day':
-        allPoints = toDaily(data);
+        allPoints = toDaily(data, isFiltered ? selectedSet : undefined);
         break;
       case 'week':
-        allPoints = toWeekly(data);
+        allPoints = toWeekly(data, isFiltered ? selectedSet : undefined);
         break;
       case 'quarter':
-        allPoints = toQuarterly(data);
+        allPoints = toQuarterly(data, isFiltered ? selectedSet : undefined);
         break;
       case 'year':
-        allPoints = toYearly(data);
+        allPoints = toYearly(data, isFiltered ? selectedSet : undefined);
         break;
       case 'month':
       default:
@@ -161,9 +171,8 @@ export function useDrillDown(monthlyData: number[] | undefined): DrillDownResult
         break;
     }
 
-    // Step 2: Filter to selected months
-    const isFiltered = selectedMonths.length < 12;
-    const selectedSet = new Set(selectedMonths);
+    // Step 2: Filter to selected months for native monthly points.
+    // Aggregate modes already apply the selected month set while calculating totals.
     const points = isFiltered
       ? allPoints.filter((p) => p.monthIndices.some((mi) => selectedSet.has(mi)))
       : allPoints;
@@ -181,6 +190,7 @@ export function useDrillDown(monthlyData: number[] | undefined): DrillDownResult
       granularity,
       selectedMonths,
       isFiltered,
+      isEstimated: granularity === 'day' || granularity === 'week',
     };
   }, [monthlyData, granularity, selectedMonths]);
 }
@@ -203,16 +213,16 @@ export function useDrillDownRecord(
       const data = monthlyData?.length === 12 ? monthlyData : new Array(12).fill(0);
 
       let allPoints: DrillDownPoint[];
+      const isFiltered = selectedMonths.length < 12;
+      const selectedSet = new Set(selectedMonths);
       switch (granularity) {
-        case 'day': allPoints = toDaily(data); break;
-        case 'week': allPoints = toWeekly(data); break;
-        case 'quarter': allPoints = toQuarterly(data); break;
-        case 'year': allPoints = toYearly(data); break;
+        case 'day': allPoints = toDaily(data, isFiltered ? selectedSet : undefined); break;
+        case 'week': allPoints = toWeekly(data, isFiltered ? selectedSet : undefined); break;
+        case 'quarter': allPoints = toQuarterly(data, isFiltered ? selectedSet : undefined); break;
+        case 'year': allPoints = toYearly(data, isFiltered ? selectedSet : undefined); break;
         default: allPoints = toMonthly(data); break;
       }
 
-      const isFiltered = selectedMonths.length < 12;
-      const selectedSet = new Set(selectedMonths);
       const points = isFiltered
         ? allPoints.filter((p) => p.monthIndices.some((mi) => selectedSet.has(mi)))
         : allPoints;
@@ -221,7 +231,17 @@ export function useDrillDownRecord(
       const total = values.reduce((sum, v) => sum + v, 0);
       const average = values.length > 0 ? total / values.length : 0;
 
-      result.set(key, { points, labels: points.map((p) => p.label), values, total, average, granularity, selectedMonths, isFiltered });
+      result.set(key, {
+        points,
+        labels: points.map((p) => p.label),
+        values,
+        total,
+        average,
+        granularity,
+        selectedMonths,
+        isFiltered,
+        isEstimated: granularity === 'day' || granularity === 'week',
+      });
     }
 
     return result;
