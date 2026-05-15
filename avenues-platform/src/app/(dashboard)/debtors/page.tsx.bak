@@ -1,0 +1,444 @@
+'use client';
+
+import React, { useState } from 'react';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Cell,
+  ComposedChart,
+} from 'recharts';
+import { Download, TrendingDown, AlertCircle, BarChart3, TrendingUp } from 'lucide-react';
+import { StatCard } from '@/components/charts/stat-card';
+import { ChartCard } from '@/components/dashboard/chart-card';
+import { DataTable } from '@/components/dashboard/data-table';
+
+// Sample debtor data
+const debtorAgingData = [
+  { month: 'Jan', current: 450000, days30: 250000, days60: 180000, days90: 120000, days120: 95000 },
+  { month: 'Feb', current: 480000, days30: 270000, days60: 190000, days90: 125000, days120: 100000 },
+  { month: 'Mar', current: 520000, days30: 290000, days60: 210000, days90: 135000, days120: 105000 },
+  { month: 'Apr', current: 510000, days30: 280000, days60: 200000, days90: 130000, days120: 102000 },
+  { month: 'May', current: 540000, days30: 310000, days60: 220000, days90: 140000, days120: 108000 },
+  { month: 'Jun', current: 580000, days30: 330000, days60: 240000, days90: 150000, days120: 115000 },
+  { month: 'Jul', current: 560000, days30: 320000, days60: 230000, days90: 145000, days120: 112000 },
+  { month: 'Aug', current: 550000, days30: 310000, days60: 220000, days90: 140000, days120: 110000 },
+  { month: 'Sep', current: 530000, days30: 300000, days60: 210000, days90: 135000, days120: 105000 },
+  { month: 'Oct', current: 570000, days30: 320000, days60: 230000, days90: 145000, days120: 112000 },
+  { month: 'Nov', current: 610000, days30: 340000, days60: 250000, days90: 155000, days120: 120000 },
+  { month: 'Dec', current: 640000, days30: 360000, days60: 270000, days90: 165000, days120: 125000 },
+];
+
+const collectionRateTrend = [
+  { month: 'Jan', rate: 72.5 },
+  { month: 'Feb', rate: 73.2 },
+  { month: 'Mar', rate: 74.1 },
+  { month: 'Apr', rate: 73.8 },
+  { month: 'May', rate: 75.2 },
+  { month: 'Jun', rate: 76.5 },
+  { month: 'Jul', rate: 77.3 },
+  { month: 'Aug', rate: 76.8 },
+  { month: 'Sep', rate: 75.9 },
+  { month: 'Oct', rate: 77.4 },
+  { month: 'Nov', rate: 78.2 },
+  { month: 'Dec', rate: 79.5 },
+];
+
+const outstandingByMedicalAid = [
+  { aid: 'Medical Scheme A', outstanding: 450000 },
+  { aid: 'Medical Scheme B', outstanding: 380000 },
+  { aid: 'Medical Scheme C', outstanding: 290000 },
+  { aid: 'Medical Scheme D', outstanding: 180000 },
+  { aid: 'Private Pay', outstanding: 320000 },
+  { aid: 'Corporate', outstanding: 165000 },
+];
+
+const monthlyWriteOffData = [
+  { month: 'Jan', writeOff: 28000 },
+  { month: 'Feb', writeOff: 32000 },
+  { month: 'Mar', writeOff: 35000 },
+  { month: 'Apr', writeOff: 30000 },
+  { month: 'May', writeOff: 38000 },
+  { month: 'Jun', writeOff: 42000 },
+  { month: 'Jul', writeOff: 40000 },
+  { month: 'Aug', writeOff: 38000 },
+  { month: 'Sep', writeOff: 35000 },
+  { month: 'Oct', writeOff: 40000 },
+  { month: 'Nov', writeOff: 45000 },
+  { month: 'Dec', writeOff: 48000 },
+];
+
+const badDebtRatioTrend = [
+  { month: 'Jan', ratio: 3.2 },
+  { month: 'Feb', ratio: 3.5 },
+  { month: 'Mar', ratio: 3.8 },
+  { month: 'Apr', ratio: 3.6 },
+  { month: 'May', ratio: 3.9 },
+  { month: 'Jun', ratio: 4.2 },
+  { month: 'Jul', ratio: 4.1 },
+  { month: 'Aug', ratio: 4.0 },
+  { month: 'Sep', ratio: 3.8 },
+  { month: 'Oct', ratio: 4.1 },
+  { month: 'Nov', ratio: 4.3 },
+  { month: 'Dec', ratio: 4.5 },
+];
+
+const recoveryTimelineData = [
+  { ageDay: '0-30', recovered: 85, percentage: 85.0 },
+  { ageDay: '31-60', recovered: 72, percentage: 72.0 },
+  { ageDay: '61-90', recovered: 58, percentage: 58.0 },
+  { ageDay: '91-120', recovered: 42, percentage: 42.0 },
+  { ageDay: '120+', recovered: 25, percentage: 25.0 },
+];
+
+const topDebtors = [
+  { scheme: 'Medical Scheme A', outstanding: 450000, aging: '120+', status: 'Critical', daysOverdue: 180 },
+  { scheme: 'Medical Scheme B', outstanding: 380000, aging: '90-120', status: 'At Risk', daysOverdue: 105 },
+  { scheme: 'Medical Scheme C', outstanding: 290000, aging: '60-90', status: 'Watch', daysOverdue: 75 },
+  { scheme: 'Private Pay', outstanding: 320000, aging: '120+', status: 'Critical', daysOverdue: 150 },
+  { scheme: 'Medical Scheme D', outstanding: 180000, aging: '30-60', status: 'Monitor', daysOverdue: 45 },
+  { scheme: 'Corporate Partners', outstanding: 165000, aging: '0-30', status: 'Normal', daysOverdue: 15 },
+  { scheme: 'Government Insurance', outstanding: 142000, aging: '60-90', status: 'Watch', daysOverdue: 80 },
+  { scheme: 'Medical Scheme E', outstanding: 128000, aging: '30-60', status: 'Monitor', daysOverdue: 50 },
+  { scheme: 'NGO Sponsored', outstanding: 95000, aging: '120+', status: 'Critical', daysOverdue: 200 },
+  { scheme: 'Direct Pay', outstanding: 78000, aging: '0-30', status: 'Normal', daysOverdue: 20 },
+];
+
+const debtorReconciliation = [
+  { scheme: 'Medical Scheme A', invoiced: 850000, received: 400000, outstanding: 450000, status: 'Overdue' },
+  { scheme: 'Medical Scheme B', invoiced: 680000, received: 300000, outstanding: 380000, status: 'Overdue' },
+  { scheme: 'Medical Scheme C', invoiced: 580000, received: 290000, outstanding: 290000, status: 'Overdue' },
+  { scheme: 'Private Pay', invoiced: 620000, received: 300000, outstanding: 320000, status: 'Overdue' },
+  { scheme: 'Corporate Partners', invoiced: 450000, received: 285000, outstanding: 165000, status: 'Current' },
+];
+
+const COLORS = ['#0d1f3c', '#00b8a0', '#f59e0b', '#e11d48', '#7c3aed'];
+
+export default function DebtorsPage() {
+  const [exportFormat, setExportFormat] = useState('csv');
+
+  // Calculate KPIs
+  const latestAgingData = debtorAgingData[debtorAgingData.length - 1];
+  const totalOutstanding =
+    latestAgingData.current +
+    latestAgingData.days30 +
+    latestAgingData.days60 +
+    latestAgingData.days90 +
+    latestAgingData.days120;
+  const collectionRate = collectionRateTrend[collectionRateTrend.length - 1].rate;
+  const totalWriteOffs = monthlyWriteOffData.reduce((sum, m) => sum + m.writeOff, 0);
+  const aging90Plus =
+    latestAgingData.days90 + latestAgingData.days120;
+
+  const handleExport = () => {
+    const csv = [
+      'Debtors Analytics Export',
+      new Date().toISOString().split('T')[0],
+      '',
+      'SUMMARY METRICS',
+      `Total Outstanding,$${totalOutstanding}`,
+      `Collection Rate %,${collectionRate}`,
+      `Annual Write-Offs,$${totalWriteOffs}`,
+      `90+ Days Outstanding,$${aging90Plus}`,
+      '',
+      'AGING BREAKDOWN (Latest)',
+      'Category,Amount',
+      `Current,$${latestAgingData.current}`,
+      `30 Days,$${latestAgingData.days30}`,
+      `60 Days,$${latestAgingData.days60}`,
+      `90 Days,$${latestAgingData.days90}`,
+      `120+ Days,$${latestAgingData.days120}`,
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `debtors-analytics-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-8 w-8 text-red-600" />
+            <h1 className="text-3xl font-bold text-slate-900">Debtors Analytics</h1>
+          </div>
+          <p className="mt-2 text-slate-600">
+            Outstanding receivables and collection performance analysis
+          </p>
+        </div>
+        <button
+          onClick={handleExport}
+          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+        >
+          <Download className="h-4 w-4" />
+          Export Report
+        </button>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Total Outstanding"
+          value={`$${(totalOutstanding / 1000000).toFixed(2)}M`}
+          change={-5.2}
+          trend="down"
+          color="red"
+          icon={AlertCircle}
+        />
+        <StatCard
+          title="Collection Rate %"
+          value={`${collectionRate}%`}
+          change={6.9}
+          trend="up"
+          color="green"
+          icon={TrendingUp}
+        />
+        <StatCard
+          title="Annual Write-Offs"
+          value={`$${(totalWriteOffs / 1000).toFixed(0)}K`}
+          change={8.5}
+          trend="down"
+          color="purple"
+          icon={TrendingDown}
+        />
+        <StatCard
+          title="Aging 90+ Days"
+          value={`$${(aging90Plus / 1000).toFixed(0)}K`}
+          change={-3.2}
+          trend="down"
+          color="amber"
+          icon={AlertCircle}
+        />
+      </div>
+
+      {/* Debtor Aging Breakdown */}
+      <ChartCard title="Debtor Aging Breakdown (12 Months)" subtitle="Outstanding amounts by aging bucket">
+        <ResponsiveContainer width="100%" height={350}>
+          <BarChart data={debtorAgingData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis dataKey="month" stroke="#6b7280" style={{ fontSize: '12px' }} />
+            <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
+            <Tooltip formatter={(value) => `$${(((value as number) / 1000).toFixed(0))}K`} />
+            <Legend />
+            <Bar dataKey="current" stackId="a" fill="#0d1f3c" name="Current" />
+            <Bar dataKey="days30" stackId="a" fill="#f59e0b" name="30 Days" />
+            <Bar dataKey="days60" stackId="a" fill="#e11d48" name="60 Days" />
+            <Bar dataKey="days90" stackId="a" fill="#ec4899" name="90 Days" />
+            <Bar dataKey="days120" stackId="a" fill="#7c3aed" name="120+ Days" />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      {/* Collection Rate Trend */}
+      <ChartCard title="Collection Rate Trend" subtitle="Monthly collection performance">
+        <ResponsiveContainer width="100%" height={300}>
+          <AreaChart data={collectionRateTrend}>
+            <defs>
+              <linearGradient id="colorCollection" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#00b8a0" stopOpacity={0.8} />
+                <stop offset="95%" stopColor="#00b8a0" stopOpacity={0.1} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis dataKey="month" stroke="#6b7280" style={{ fontSize: '12px' }} />
+            <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
+            <Tooltip formatter={(value) => `${((value as number){value.toFixed(1)}%`} />
+            <Area
+              type="monotone"
+              dataKey="rate"
+              stroke="#00b8a0"
+              fillOpacity={1}
+              fill="url(#colorCollection)"
+              name="Collection Rate %"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
+      {/* Outstanding by Medical Aid and Write-Offs */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Outstanding by Medical Aid" subtitle="Distribution across schemes">
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart
+              data={outstandingByMedicalAid}
+              layout="vertical"
+              margin={{ top: 5, right: 30, left: 180, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis type="number" stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <YAxis dataKey="aid" type="category" stroke="#6b7280" width={160} style={{ fontSize: '11px' }} />
+              <Tooltip formatter={(value) => `$${(((value as number) / 1000).toFixed(0))}K`} />
+              <Bar dataKey="outstanding" fill="#e11d48" radius={[0, 8, 8, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Monthly Write-Off Trend" subtitle="Bad debt write-offs over 12 months">
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={monthlyWriteOffData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="month" stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <Tooltip formatter={(value) => `$${(((value as number) / 1000).toFixed(0))}K`} />
+              <Bar dataKey="writeOff" fill="#7c3aed" radius={[8, 8, 0, 0]} name="Write-Offs" />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      {/* Bad Debt Ratio and Recovery Timeline */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Bad Debt Ratio Trend" subtitle="Monthly bad debt as % of revenue">
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={badDebtRatioTrend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="month" stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <Tooltip formatter={(value) => `${((value as number){value.toFixed(2)}%`} />
+              <Line
+                type="monotone"
+                dataKey="ratio"
+                stroke="#e11d48"
+                strokeWidth={2}
+                dot={{ fill: '#e11d48', r: 4 }}
+                name="Bad Debt Ratio %"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Recovery Timeline Analysis" subtitle="Collection success rate by aging bucket">
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={recoveryTimelineData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="ageDay" stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
+              <Tooltip formatter={(value) => `${((value as number){value}%`} />
+              <Bar dataKey="percentage" fill="#00b8a0" radius={[8, 8, 0, 0]} name="Recovery %" />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      {/* Debtor Reconciliation Table */}
+      <ChartCard title="Debtor Reconciliation" subtitle="Outstanding balances by scheme">
+        <DataTable
+          columns={[
+            {
+              key: 'scheme',
+              header: 'Scheme/Account',
+              sortable: true,
+            },
+            {
+              key: 'invoiced',
+              header: 'Invoiced',
+              sortable: true,
+              format: (value) => `$${(value / 1000).toFixed(0)}K`,
+              align: 'right',
+            },
+            {
+              key: 'received',
+              header: 'Received',
+              sortable: true,
+              format: (value) => `$${(value / 1000).toFixed(0)}K`,
+              align: 'right',
+            },
+            {
+              key: 'outstanding',
+              header: 'Outstanding',
+              sortable: true,
+              format: (value) => `$${(value / 1000).toFixed(0)}K`,
+              align: 'right',
+            },
+            {
+              key: 'status',
+              header: 'Status',
+              sortable: true,
+              align: 'center',
+            },
+          ]}
+          data={debtorReconciliation}
+          searchable={true}
+          exportable={true}
+          pageSize={5}
+        />
+      </ChartCard>
+
+      {/* Top Debtors Table */}
+      <ChartCard title="Top Debtors by Outstanding Amount" subtitle="Priority recovery targets">
+        <DataTable
+          columns={[
+            {
+              key: 'scheme',
+              header: 'Scheme/Account',
+              sortable: true,
+            },
+            {
+              key: 'outstanding',
+              header: 'Outstanding',
+              sortable: true,
+              format: (value) => `$${(value / 1000).toFixed(0)}K`,
+              align: 'right',
+            },
+            {
+              key: 'aging',
+              header: 'Aging Bucket',
+              sortable: true,
+              align: 'center',
+            },
+            {
+              key: 'daysOverdue',
+              header: 'Days Overdue',
+              sortable: true,
+              align: 'right',
+            },
+            {
+              key: 'status',
+              header: 'Status',
+              sortable: false,
+              align: 'center',
+            },
+          ]}
+          data={topDebtors}
+          searchable={true}
+          exportable={true}
+          pageSize={10}
+        />
+      </ChartCard>
+
+      {/* Summary Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <h3 className="text-sm font-medium text-gray-600">% of Outstanding 90+ Days</h3>
+          <p className="mt-3 text-3xl font-bold text-red-600">{((aging90Plus / totalOutstanding) * 100).toFixed(1)}%</p>
+          <p className="mt-2 text-xs text-gray-500">{`$${(aging90Plus / 1000).toFixed(0)}K of total`}</p>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <h3 className="text-sm font-medium text-gray-600">Average Days Overdue</h3>
+          <p className="mt-3 text-3xl font-bold text-gray-900">68</p>
+          <p className="mt-2 text-xs text-gray-500">Weighted average across schemes</p>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <h3 className="text-sm font-medium text-gray-600">Monthly Write-Off Avg</h3>
+          <p className="mt-3 text-3xl font-bold text-purple-600">${(totalWriteOffs / 12 / 1000).toFixed(0)}K</p>
+          <p className="mt-2 text-xs text-gray-500">Average monthly bad debt</p>
+        </div>
+      </div>
+    </div>
+  );
+}

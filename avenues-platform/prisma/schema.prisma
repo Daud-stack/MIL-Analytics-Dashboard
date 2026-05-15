@@ -1,0 +1,125 @@
+// Avenues Clinic Intelligence Platform
+// Prisma schema — Vercel Postgres (Neon)
+// Connection URLs are configured in prisma.config.ts (Prisma 7+)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Auth & Users ────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String? // bcrypt hash
+  role      String   @default("VIEWER") // ADMIN | ANALYST | VIEWER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orgId String?
+  org   Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  uploads DataUpload[]
+
+  @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  users     User[]
+  yearData  YearDataRecord[]
+  uploads   DataUpload[]
+
+  @@map("organizations")
+}
+
+// ─── Core Data ───────────────────────────────────────────────
+
+/// One row per year per org — stores the full YearData blob as JSON.
+/// This maps 1:1 to the Zustand store's `Map<number, YearData>`.
+model YearDataRecord {
+  id    String @id @default(cuid())
+  year  Int
+  orgId String
+
+  /// Full dashboard metrics (admissions, revenue, theatre, pharmacy, etc.)
+  dashboard Json?
+
+  /// Location/Episode aggregates (doctors, ICD/CPT codes, specialties, rawRows)
+  location Json?
+
+  /// Claims aggregates (by scheme, doctor, month, rejection reasons)
+  claims Json?
+
+  /// Generic datasets uploaded via CSV
+  datasets Json? @default("{}")
+
+  /// Upload history records
+  uploads Json? @default("[]")
+
+  /// SHA-256 hashes of processed files (for dedup)
+  processedHashes String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([year, orgId])
+  @@index([orgId])
+  @@index([processedHashes], type: Gin)
+  @@map("year_data")
+}
+
+// ─── Upload Tracking ─────────────────────────────────────────
+
+model DataUpload {
+  id         String   @id @default(cuid())
+  fileName   String
+  fileType   String // DASHBOARD | LOCATION | CLAIMS | GENERIC
+  fileHash   String? // SHA-256 for dedup
+  year       Int
+  rowCount   Int      @default(0)
+  status     String   @default("COMPLETE") // PROCESSING | COMPLETE | ERROR
+  uploadedBy String
+  orgId      String
+  createdAt  DateTime @default(now())
+
+  user User         @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([uploadedBy])
+  @@index([fileHash])
+  @@map("data_uploads")
+}
+
+// ─── Audit Log ───────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // UPLOAD | LOGIN | EXPORT | DATA_WRITE | WEBHOOK | SETTINGS_CHANGE
+  category  String?  // Dashboard | Location | Claims | Auth | System
+  details   String?  // Human-readable description
+  metadata  Json?    // Additional structured data
+  userId    String?
+  userName  String?
+  orgId     String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

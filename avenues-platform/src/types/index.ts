@@ -1,0 +1,624 @@
+export const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+export const BENCHMARKS = {
+  revenueGrowth: 15,
+  episodeGrowth: 10,
+  theatreUtilization: 75,
+  occupancyRate: 80,
+  admissionRate: 100,
+  pharmacyMargin: 35,
+};
+
+export const COLOR_PALETTE = {
+  navy: "#0d1f3c",
+  teal: "#00b8a0",
+  amber: "#f59e0b",
+  rose: "#e11d48",
+  violet: "#7c3aed",
+  gray50: "#f9fafb",
+  gray100: "#f3f4f6",
+  gray200: "#e5e7eb",
+  gray300: "#d1d5db",
+  gray400: "#9ca3af",
+  gray500: "#6b7280",
+  gray600: "#4b5563",
+  gray700: "#374151",
+  gray800: "#1f2937",
+  gray900: "#111827",
+};
+
+/**
+ * Standard chart colors used across all dashboard pages.
+ * Import this instead of defining local COLORS arrays.
+ */
+export const CHART_COLORS = [
+  '#0d9488', // teal-600
+  '#475569', // slate-600
+  '#d97706', // amber-600
+  '#e11d48', // rose-600
+  '#7c3aed', // violet-600
+  '#0284c7', // sky-600
+  '#059669', // emerald-600
+  '#dc2626', // red-600
+  '#6366f1', // indigo-500
+  '#f59e0b', // amber-500
+];
+
+/**
+ * Cluster-specific colors (distinct for scatter plots / clustering)
+ */
+export const CLUSTER_COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b'];
+
+// Dashboard & Metrics Types - Enhanced
+export interface DashboardMetrics {
+  year: number;
+  totalRevenue: number;
+  monthRevenue: number[];
+  monthEpisodes: number[];
+  admCasualty: number[];
+  admDay: number[];
+  admInpatient: number[];
+  admLab: number[];
+  theatreCases: number[];
+  theatreMinutes: number[];
+  theatreUtil: number[];
+  theatrePctOcc: number[];
+  pharmacyRx: number[];
+  pharmacyRev: number[];
+  occupancyBeds: number[];
+  patientDays: Record<string, number[]>;
+  pctOccWard: Record<string, number[]>;
+  patDaysWard: Record<string, number[]>;
+  patDaysLOC: Record<string, number[]>;
+  occMidnight: number[];
+  revLocation: Record<string, number[]>;
+  admPerWard: Record<string, number[]>;
+  debtRecon: {
+    brought: number[];
+    revenue: number[];
+    payments: number[];
+    sundries: number[];
+    total: number[];
+  };
+  casToInpatient: number[];
+  epsFinalised: number[];
+  dischNotFinalised: number[];
+  revPerPatDay: number[];
+  gpEthical: number[];
+  gpSurgical: number[];
+  payments: {
+    deposits: number[];
+    individual: number[];
+    medAid: number[];
+    batched: number[];
+  };
+  // ── All raw columnar data from CSV (column header → 12 monthly values) ──
+  rawColumns: Record<string, number[]>;
+  // ── Additional parsed sections ──
+  discharges: Record<string, number[]>;
+  dischargesPerWard: Record<string, number[]>;
+  patientsAtMidday: Record<string, number[]>;
+  billedPatDays: Record<string, number[]>;
+  cosLocation: Record<string, number[]>;
+  gpEthicalPerLoc: Record<string, number[]>;
+  gpSurgicalPerLoc: Record<string, number[]>;
+  revPerRevCentre: Record<string, number[]>;
+  chargeableItems: Record<string, number[]>;
+  nonChargeableItems: Record<string, number[]>;
+  stockReceiptsDiscount: Record<string, number[]>;
+  stockReceipts: Record<string, number[]>;
+  stockReceiptsValue: Record<string, number[]>;
+  prescriptionsHospital: number[];
+  prescriptionsRetail: number[];
+  prescriptionsRevHospital: number[];
+  prescriptionsRevRetail: number[];
+  dischNotFinalisedValue: number[];
+  accountSundries: number[];
+}
+
+/**
+ * Casualty-to-Inpatient Conversion Analytics
+ *
+ * Based on AHRQ (Agency for Healthcare Research and Quality) and WHO definitions:
+ * A "conversion" is a patient who presents at Casualty/ED (C-episode) and is
+ * subsequently admitted as an inpatient (A-episode) within a 48-hour window.
+ */
+export interface ConversionMetrics {
+  /** Monthly casualty episode counts (12 months) */
+  monthlyCasualty: number[];
+  /** Monthly inpatient episode counts (12 months) */
+  monthlyInpatient: number[];
+  /** Monthly conversion counts — C→A within 48hrs (12 months) */
+  monthlyConversions: number[];
+  /** Monthly conversion rate % (conversions / casualty * 100) */
+  monthlyConversionRate: number[];
+  /** Monthly average LOS for converted inpatient episodes */
+  monthlyConversionALOS: number[];
+  /** Monthly average revenue for converted inpatient episodes */
+  monthlyConversionRevenue: number[];
+  /** Monthly average LOS for non-converted (direct) inpatient episodes — for comparison */
+  monthlyDirectALOS: number[];
+  /** Monthly average revenue for non-converted (direct) inpatient episodes */
+  monthlyDirectRevenue: number[];
+  /** Top specialties that converted patients were admitted under */
+  conversionsBySpecialty: Record<string, number>;
+  /** Top ICD codes for converted patients */
+  conversionsByICD: Record<string, { count: number; desc: string }>;
+  /** Ward utilization for converted inpatient episodes */
+  conversionsByWard: Record<string, number>;
+  /** Medical aid distribution for converted patients */
+  conversionsByMedAid: Record<string, number>;
+  /** Age group distribution for converted patients */
+  conversionsByAge: Record<string, number>;
+  /** Gender distribution for converted patients */
+  conversionsByGender: Record<string, number>;
+  /** Individual conversion records for drill-down */
+  conversionRecords: ConversionRecord[];
+  /** Summary totals */
+  totalCasualty: number;
+  totalInpatient: number;
+  totalConversions: number;
+  overallConversionRate: number;
+  avgConversionLOS: number;
+  avgDirectLOS: number;
+  avgConversionRevenue: number;
+  avgDirectRevenue: number;
+}
+
+export interface ConversionRecord {
+  patientName: string;
+  admDate: string;
+  casualtyEpisode: string;
+  inpatientEpisode: string;
+  specialty: string;
+  icdCode: string;
+  icdDesc: string;
+  los: number;
+  revenue: number;
+  ward: string;
+  medAid: string;
+  age: number;
+  gender: string;
+  /** Days between C admission and A admission (0 = same day) */
+  daysToConversion: number;
+}
+
+// Location Data Types - Enhanced
+export interface LocationData {
+  year: number;
+  episodes: number;
+  monthEpisodes: number[];
+  monthRevenue: number[];
+  totalRevenue: number;
+  doctors: DoctorMetric[];
+  icdCodes: Record<string, { count: number; desc: string }>;
+  cptCodes: Record<string, { count: number; desc: string }>;
+  genders: Record<string, number>;
+  ageGroups: Record<string, number>;
+  medAids: Record<string, number>;
+  specialties: Record<string, number>;
+  los: Record<string, number>; // length of stay distribution
+  rawRows: Record<string, unknown>[];
+  /** Casualty-to-Inpatient conversion analytics */
+  conversions?: ConversionMetrics;
+}
+
+export interface DoctorMetric {
+  name: string;
+  specialty: string;
+  episodes: number;
+  revenue: number;
+  avgLOS: number;
+  patients: number;
+}
+
+// Claims Data Types - Enhanced
+export interface ClaimsMetrics {
+  year: number;
+  totalClaims: number;
+  totalClaimed: number;
+  submitted: number;
+  received: number;
+  rejected: number;
+  approved: number;
+  pending: number;
+  byScheme: Record<string, ClaimSchemeData>;
+  byStatus: Record<string, number>;
+  byMonth: Record<number, number>;
+  byDoctor: Record<string, { claims: number; approved: number; amount: number }>;
+  totalClaims_monthly: number[];
+  approvedClaims_monthly: number[];
+  rejectedClaims_monthly: number[];
+  pendingClaims_monthly: number[];
+  claimAmounts_monthly: number[];
+  rejectionReasons: Record<string, number>;
+  rawRows?: Record<string, string>[];  // raw claim rows for dedup on near-duplicate uploads
+}
+
+export interface ClaimSchemeData {
+  totalClaimed: number;
+  submitted: number;
+  received: number;
+  rejected: number;
+  approved: number;
+  pending: number;
+}
+
+// Upload tracking — one record per file ingested
+export type UploadCategory = 'Dashboard' | 'Location' | 'Claims';
+
+export interface UploadRecord {
+  id: string;                 // unique upload id (crypto.randomUUID)
+  category: UploadCategory;   // which data slot this populated
+  fileName: string;           // original file name
+  fileHash?: string;          // content hash for deduplication
+  uploadedAt: string;         // ISO timestamp
+  rowCount: number;           // rows/data-points contributed
+  action: 'replace' | 'append'; // was this a fresh load or an append?
+}
+
+// ===== GENERIC DATASET TYPES (column-based, schema-agnostic) =====
+
+export type ColumnType = 'numeric' | 'categorical' | 'date' | 'text' | 'boolean';
+
+/** Profile of a single column — computed on ingest */
+export interface ColumnProfile {
+  name: string;
+  type: ColumnType;
+  nonNull: number;         // count of non-null values
+  unique: number;          // count of distinct values
+  missing: number;         // count of null/empty values
+  // Numeric stats (only for numeric columns)
+  min?: number;
+  max?: number;
+  mean?: number;
+  median?: number;
+  std?: number;
+  sum?: number;
+  // Categorical stats (only for categorical/text)
+  topValues?: { value: string; count: number }[];
+  // Date stats
+  minDate?: string;
+  maxDate?: string;
+}
+
+/** A schema fingerprint — allows recognising the "same" file on re-upload */
+export interface DatasetSchema {
+  id: string;              // hash of sorted column names + types
+  columns: ColumnProfile[];
+  columnNames: string[];
+}
+
+/** One named, heterogeneous dataset stored in the app */
+export interface GenericDataset {
+  id: string;              // unique dataset id
+  name: string;            // user-friendly name (defaults to file name)
+  fileName: string;        // original file name
+  schemaId: string;        // links to DatasetSchema.id
+  schema: DatasetSchema;
+  uploadedAt: string;      // ISO timestamp
+  rowCount: number;
+  // Stored rows — kept lean: only first 2000 rows for in-browser analysis
+  rows: Record<string, unknown>[];
+  // Column-level aggregations for quick charting
+  columnProfiles: ColumnProfile[];
+}
+
+// Year data aggregation
+export interface YearData {
+  year: number;
+  dash: DashboardMetrics | null;
+  dashboard: DashboardMetrics | null; // alias for consistency
+  loc: LocationData | null;
+  location: LocationData | null; // alias for consistency
+  apac: ClaimsMetrics | null;
+  claims: ClaimsMetrics | null; // alias for consistency
+  uploads: UploadRecord[];     // history of all files ingested for this year
+  /** Maps file hash -> DashboardMetrics for idempotent summation */
+  dashboardSnapshots?: Record<string, DashboardMetrics>;
+  datasets: Record<string, GenericDataset>; // key = dataset name/schemaId
+}
+
+// User & Auth Types
+export interface User {
+  id: string;
+  email: string;
+  name?: string;
+  role: "ADMIN" | "ANALYST" | "VIEWER";
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SessionUser {
+  id: string;
+  email: string;
+  name?: string;
+  role: "ADMIN" | "ANALYST" | "VIEWER";
+}
+
+// Filter & View State
+export interface FilterState {
+  years: number[];
+  months: number[];
+  doctors?: string[];
+  locations?: string[];
+  specialties?: string[];
+  schemes?: string[];
+  searchText?: string;
+}
+
+export interface ChartConfig {
+  title: string;
+  description?: string;
+  type: "line" | "bar" | "area" | "pie" | "gauge" | "stat";
+  dataKey?: string;
+  color?: string;
+  showLegend?: boolean;
+  showTooltip?: boolean;
+  showGrid?: boolean;
+  responsive?: boolean;
+}
+
+export interface StatResult {
+  label: string;
+  value: number | string;
+  change?: number;
+  changeType?: "increase" | "decrease" | "neutral";
+  unit?: string;
+  formatting?: "currency" | "number" | "percent";
+}
+
+export interface InsightCard {
+  id: string;
+  title: string;
+  metric: string;
+  value: number | string;
+  change: number;
+  changeType: "increase" | "decrease" | "neutral";
+  trend?: "up" | "down" | "flat";
+  insight: string;
+  dataType: "dashboard" | "location" | "claims";
+}
+
+export interface BenchmarkTarget {
+  label: string;
+  value: number;
+  target: number;
+  status: "on_track" | "warning" | "critical";
+  variance: number;
+}
+
+export interface DrillLevel {
+  level: "organization" | "location" | "department" | "doctor" | "claim";
+  displayName: string;
+  dataKey: string;
+}
+
+// Data Upload Types
+export interface DataUploadFile {
+  id: string;
+  fileName: string;
+  fileType: "DASHBOARD" | "LOCATION" | "CLAIMS";
+  year: number;
+  month?: number;
+  status: "PROCESSING" | "COMPLETE" | "ERROR";
+  uploadedBy: string;
+  orgId: string;
+  createdAt: Date;
+}
+
+// API Response Types
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
+
+export interface PaginatedResponse<T> {
+  success: boolean;
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
+// Chart Data Types
+export interface ChartDataPoint {
+  label: string;
+  value: number;
+  formatted?: string;
+  color?: string;
+  meta?: Record<string, unknown>;
+}
+
+export type ChartPrimitive = string | number | null | undefined;
+export type ChartRecord = Record<string, ChartPrimitive>;
+
+export interface ChartTooltipEntry<TPayload extends ChartRecord = ChartRecord> {
+  color?: string;
+  name?: string;
+  value?: ChartPrimitive;
+  dataKey?: string | number;
+  payload?: TPayload;
+}
+
+export interface ChartTooltipProps<TPayload extends ChartRecord = ChartRecord> {
+  active?: boolean;
+  label?: string | number;
+  payload?: ChartTooltipEntry<TPayload>[];
+}
+
+export interface TimeSeriesData {
+  month: string;
+  value: number;
+  comparison?: number;
+  trend?: number;
+}
+
+export interface ComparisonData {
+  category: string;
+  current: number;
+  previous: number;
+  benchmark?: number;
+  change: number;
+}
+
+// Report Types
+export interface ReportConfig {
+  title: string;
+  description?: string;
+  metrics: string[];
+  dateRange: {
+    start: Date;
+    end: Date;
+  };
+  filters?: FilterState;
+  exportFormat?: "pdf" | "xlsx" | "csv";
+}
+
+export interface ReportData {
+  id: string;
+  title: string;
+  generatedAt: Date;
+  generatedBy: string;
+  data: Record<string, unknown>;
+  charts: ChartConfig[];
+}
+
+// Error Types
+export class AppError extends Error {
+  constructor(
+    public code: string,
+    public statusCode: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "AppError";
+  }
+}
+
+// Theme Types
+export type Theme = "light" | "dark";
+
+export interface ThemeConfig {
+  mode: Theme;
+  colors: typeof COLOR_PALETTE;
+  spacing: Record<string, string>;
+  borderRadius: Record<string, string>;
+}
+
+// Notification Types
+export interface Notification {
+  id: string;
+  type: "success" | "error" | "warning" | "info";
+  message: string;
+  duration?: number;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+}
+
+// Data Quality Types
+export interface DataQualityIssue {
+  severity: 'error' | 'warning' | 'info';
+  field: string;
+  message: string;
+  affectedRows: number;
+}
+
+export interface DataQualityReport {
+  totalRows: number;
+  duplicates: number;
+  missingValues: Record<string, number>;
+  outliers: Record<string, number[]>;
+  score: number; // 0-100
+  issues: DataQualityIssue[];
+}
+
+// Benchmark Targets
+export interface BenchmarkTargets {
+  admissions: number;
+  occupancy: number; // percentage
+  theatreCases: number;
+  pharmacyRx: number;
+  totalRevenue: number;
+  collectionRate: number; // percentage
+}
+
+// Store State Type (for Zustand)
+export interface StoreState {
+  // Data
+  years: Map<number, YearData>;
+  currentYear: number;
+  currentMonth: number;
+  compareYears: number[];
+  /** SHA-256 hashes of files already processed — prevents double-counting on re-upload */
+  processedFileHashes: string[];
+
+  // UI State
+  activePage: string;
+  theme: Theme;
+  sidebarOpen: boolean;
+  filters: FilterState;
+
+  // Actions
+  setYear: (year: number) => void;
+  setMonth: (month: number) => void;
+  addYearData: (year: number, data: YearData) => void;
+  appendDailyData: (year: number, monthIndex: number, patch: DailyDataPatch) => void;
+  isFileProcessed: (hash: string) => boolean;
+  markFileProcessed: (hash: string) => void;
+  removeYear: (year: number) => void;
+  removeUpload: (year: number, uploadId: string) => void;
+  addDataset: (year: number, dataset: GenericDataset) => void;
+  removeDataset: (year: number, datasetId: string) => void;
+  toggleCompare: (year: number) => void;
+  clearCompare: () => void;
+  setTheme: (theme: Theme) => void;
+  toggleSidebar: () => void;
+  setFilters: (filters: FilterState) => void;
+  reset: () => void;
+}
+
+/**
+ * A lightweight partial update for a single day's data.
+ * Used by the file watcher for incremental daily ingests.
+ * All fields are optional — only the provided fields get merged.
+ */
+export interface DailyDataPatch {
+  // Dashboard increments (single-month values to ADD to the monthly slot)
+  admissions?: { casualty?: number; day?: number; inpatient?: number; lab?: number };
+  discharges?: Record<string, number>;
+  revenue?: number;
+  theatreCases?: number;
+  theatreMinutes?: number;
+  pharmacyRx?: number;
+  pharmacyRev?: number;
+  epsFinalised?: number;
+  payments?: { deposits?: number; individual?: number; medAid?: number; batched?: number };
+  wardAdmissions?: Record<string, number>;
+  // Location increments
+  newEpisodes?: number;
+  newLocationRevenue?: number;
+  newIcdCodes?: Record<string, { count: number; desc: string }>;
+  newCptCodes?: Record<string, { count: number; desc: string }>;
+  // Claims increments
+  newClaims?: { total?: number; approved?: number; rejected?: number; pending?: number; amount?: number };
+  newClaimsByScheme?: Record<string, { claimed: number; approved: number; rejected: number }>;
+}
