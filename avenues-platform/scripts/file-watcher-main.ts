@@ -36,6 +36,17 @@ const POLL_MS = parseInt(process.env.POLL_MS || '2000', 10);
 const API_RETRY_COUNT = 3;
 const API_RETRY_DELAY_MS = 5000;
 
+function asPayloadObject(
+  value: object | null,
+  label: SupportedFileType
+): Record<string, unknown> {
+  if (!value) {
+    throw new Error(`${label} parser returned no data`);
+  }
+
+  return value as unknown as Record<string, unknown>;
+}
+
 function validateConfig(): void {
   const errors: string[] = [];
 
@@ -190,12 +201,12 @@ function extractPayload(
 ): { year: number; data: Record<string, unknown> } {
   if (fileType === 'Dashboard') {
     const result = parseDashboardCSV(csvText);
-    return { year: result.year, data: result.dashboard as Record<string, unknown> };
+    return { year: result.year, data: asPayloadObject(result.dashboard, fileType) };
   }
 
   if (fileType === 'Location') {
     const result = parseLocationCSV(csvText);
-    return { year: result.year, data: result.location as Record<string, unknown> };
+    return { year: result.year, data: asPayloadObject(result.location, fileType) };
   }
 
   if (fileType === 'Generic') {
@@ -207,7 +218,7 @@ function extractPayload(
   }
 
   const result = parseClaimsCSV(csvText);
-  return { year: result.year, data: result.claims as Record<string, unknown> };
+  return { year: result.year, data: asPayloadObject(result.claims, fileType) };
 }
 
 async function processFile(filePath: string): Promise<void> {

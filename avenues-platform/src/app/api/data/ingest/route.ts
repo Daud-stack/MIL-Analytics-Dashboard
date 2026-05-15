@@ -94,10 +94,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const existingDashboard = existing?.dashboard as DashboardMetrics | null | undefined;
-    const existingLocation = existing?.location as LocationData | null | undefined;
-    const existingClaims = existing?.claims as ClaimsMetrics | null | undefined;
-    const existingDatasets = existing?.datasets as Record<string, GenericDataset> | null | undefined;
+    const existingDashboard = existing?.dashboard as unknown as DashboardMetrics | null | undefined;
+    const existingLocation = existing?.location as unknown as LocationData | null | undefined;
+    const existingClaims = existing?.claims as unknown as ClaimsMetrics | null | undefined;
+    const existingDatasets = existing?.datasets as unknown as Record<string, GenericDataset> | null | undefined;
 
     if (existing?.processedHashes?.includes(sha256)) {
       return NextResponse.json({
@@ -113,13 +113,13 @@ export async function POST(request: NextRequest) {
     // ── Build the update payload using merging ──
     const updateData: Record<string, unknown> = {};
     if (fileType === 'Dashboard') {
-      updateData.dashboard = mergeDashboard(existingDashboard ?? null, data as DashboardMetrics);
+      updateData.dashboard = mergeDashboard(existingDashboard ?? null, data as unknown as DashboardMetrics);
     } else if (fileType === 'Location') {
-      updateData.location = mergeLocation(existingLocation ?? null, data as LocationData);
+      updateData.location = mergeLocation(existingLocation ?? null, data as unknown as LocationData);
     } else if (fileType === 'Claims') {
-      updateData.claims = mergeClaims(existingClaims ?? null, data as ClaimsMetrics);
+      updateData.claims = mergeClaims(existingClaims ?? null, data as unknown as ClaimsMetrics);
     } else if (fileType === 'Generic') {
-      updateData.datasets = mergeGenericDatasets(existingDatasets, data as Record<string, GenericDataset>);
+      updateData.datasets = mergeGenericDatasets(existingDatasets, data as unknown as Record<string, GenericDataset>);
     }
 
     // ── Build upload metadata ──
