@@ -1,7 +1,13 @@
 import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 import prisma from "@/lib/prisma";
+
+const credentialsSchema = z.object({
+  email: z.string().trim().email().max(320),
+  password: z.string().min(8).max(256),
+});
 
 /**
  * NextAuth configuration for Avenues Clinic Intelligence Platform
@@ -16,12 +22,13 @@ export const authConfig: NextAuthConfig = {
   providers: [
     Credentials({
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email and password are required");
+        const parsedCredentials = credentialsSchema.safeParse(credentials);
+        if (!parsedCredentials.success) {
+          return null;
         }
 
-        const email = (credentials.email as string).toLowerCase().trim();
-        const password = credentials.password as string;
+        const email = parsedCredentials.data.email.toLowerCase();
+        const password = parsedCredentials.data.password;
 
         const user = await prisma.user.findUnique({
           where: { email },
@@ -29,13 +36,13 @@ export const authConfig: NextAuthConfig = {
         });
 
         if (!user || !user.password) {
-          throw new Error("Invalid email or password");
+          return null;
         }
 
         const passwordMatch = await bcrypt.compare(password, user.password);
 
         if (!passwordMatch) {
-          throw new Error("Invalid email or password");
+          return null;
         }
 
         return {
@@ -52,12 +59,12 @@ export const authConfig: NextAuthConfig = {
 
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-    updateAge: 24 * 60 * 60, // 24 hours
+    maxAge: 30 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
   },
 
   jwt: {
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
   },
 
   callbacks: {
@@ -103,8 +110,6 @@ export const authConfig: NextAuthConfig = {
 
   debug: process.env.NODE_ENV === "development",
 };
-
-// ─── Type Augmentation ─────────────────────────────────────
 
 interface AuthUser {
   id: string;

@@ -7,6 +7,7 @@ import { User, Mail, Lock, AlertCircle, Loader2, CheckCircle } from "lucide-reac
 
 export default function RegisterPage() {
   const router = useRouter();
+  const selfRegistrationEnabled = process.env.NEXT_PUBLIC_ALLOW_SELF_REGISTRATION === "true";
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -36,8 +37,8 @@ export default function RegisterPage() {
 
     if (!formData.password) {
       errors.password = "Password is required";
-    } else if (formData.password.length < 8) {
-      errors.password = "Password must be at least 8 characters";
+    } else if (formData.password.length < 12) {
+      errors.password = "Password must be at least 12 characters";
     }
 
     if (formData.password !== formData.confirmPassword) {
@@ -54,7 +55,6 @@ export default function RegisterPage() {
       ...prev,
       [name]: value,
     }));
-    // Clear validation error for this field
     if (validationErrors[name]) {
       setValidationErrors((prev) => ({
         ...prev,
@@ -94,7 +94,6 @@ export default function RegisterPage() {
       }
 
       setSuccess(true);
-      // Redirect to login after 2 seconds
       setTimeout(() => {
         router.push("/login");
       }, 2000);
@@ -134,7 +133,6 @@ export default function RegisterPage() {
 
   return (
     <div className="px-6 py-8 sm:px-8">
-      {/* Header */}
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-white">Create Account</h2>
         <p className="text-slate-400 text-sm mt-1">
@@ -142,7 +140,17 @@ export default function RegisterPage() {
         </p>
       </div>
 
-      {/* Error message */}
+      {!selfRegistrationEnabled && (
+        <div className="mb-6 rounded-lg bg-amber-900/20 border border-amber-700/30 p-4 flex items-start gap-3">
+          <div className="flex-shrink-0 text-amber-400 mt-0.5">
+            <AlertCircle className="h-4 w-4" />
+          </div>
+          <p className="text-sm text-amber-200">
+            Self-registration is currently disabled. An authenticated administrator can still create accounts from this form.
+          </p>
+        </div>
+      )}
+
       {error && (
         <div className="mb-6 rounded-lg bg-rose-900/20 border border-rose-700/30 p-4 flex items-start gap-3">
           <div className="flex-shrink-0 text-rose-400 mt-0.5">
@@ -152,9 +160,7 @@ export default function RegisterPage() {
         </div>
       )}
 
-      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Full Name Field */}
         <div className="space-y-2">
           <label htmlFor="name" className="block text-sm font-medium text-slate-200">
             Full Name
@@ -183,7 +189,6 @@ export default function RegisterPage() {
           )}
         </div>
 
-        {/* Email Field */}
         <div className="space-y-2">
           <label htmlFor="email" className="block text-sm font-medium text-slate-200">
             Email Address
@@ -212,7 +217,6 @@ export default function RegisterPage() {
           )}
         </div>
 
-        {/* Password Field */}
         <div className="space-y-2">
           <label htmlFor="password" className="block text-sm font-medium text-slate-200">
             Password
@@ -223,7 +227,7 @@ export default function RegisterPage() {
               id="password"
               type="password"
               name="password"
-              placeholder="••••••••"
+              placeholder="************"
               value={formData.password}
               onChange={handleChange}
               required
@@ -240,11 +244,10 @@ export default function RegisterPage() {
             <p className="text-xs text-rose-400">{validationErrors.password}</p>
           )}
           <p className="text-xs text-slate-400">
-            Minimum 8 characters
+            Minimum 12 characters
           </p>
         </div>
 
-        {/* Confirm Password Field */}
         <div className="space-y-2">
           <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-200">
             Confirm Password
@@ -255,7 +258,7 @@ export default function RegisterPage() {
               id="confirmPassword"
               type="password"
               name="confirmPassword"
-              placeholder="••••••••"
+              placeholder="************"
               value={formData.confirmPassword}
               onChange={handleChange}
               required
@@ -273,7 +276,6 @@ export default function RegisterPage() {
           )}
         </div>
 
-        {/* Create Account Button */}
         <button
           type="submit"
           disabled={isLoading}
@@ -284,7 +286,6 @@ export default function RegisterPage() {
         </button>
       </form>
 
-      {/* Footer */}
       <div className="mt-6 pt-6 border-t border-slate-700">
         <p className="text-center text-sm text-slate-400">
           Already have an account?{" "}

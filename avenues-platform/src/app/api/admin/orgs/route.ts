@@ -1,25 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
+import { isAdminSession } from '@/lib/security';
 
 /**
  * GET /api/admin/orgs
  *
- * Returns all organizations. Authenticated via session (ADMIN role)
- * or INGEST_API_KEY for M2M access.
- *
- * Usage:
- *   curl -H "X-API-Key: YOUR_KEY" https://mil-analytics-dashboard.vercel.app/api/admin/orgs
+ * Returns all organizations. Restricted to authenticated ADMIN users.
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    // Auth: require ADMIN session OR valid API key
     const session = await auth();
-    const apiKey = request.headers.get('x-api-key') || request.headers.get('X-API-Key');
-    const validApiKey = process.env.INGEST_API_KEY && apiKey === process.env.INGEST_API_KEY;
-
-    if (!validApiKey && (!session?.user || (session.user as { role?: string }).role !== 'ADMIN')) {
-      return NextResponse.json({ error: 'Unauthorized — admin access required' }, { status: 401 });
+    if (!isAdminSession(session)) {
+      return NextResponse.json({ error: 'Unauthorized - admin access required' }, { status: 401 });
     }
 
     const orgs = await prisma.organization.findMany({

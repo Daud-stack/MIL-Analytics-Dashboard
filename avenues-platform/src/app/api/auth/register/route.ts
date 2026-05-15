@@ -1,24 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
+import {
+  enforceRateLimit,
+  getClientIp,
+  isAdminSession,
+} from "@/lib/security";
 
 const registerSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  organization: z.string().optional().default("Avenues Clinic"),
+  name: z.string().trim().min(1, "Name is required").max(120, "Name is too long"),
+  email: z.string().trim().email("Invalid email address").max(320, "Email is too long"),
+  password: z
+    .string()
+    .min(12, "Password must be at least 12 characters")
+    .max(256, "Password is too long"),
+  organization: z.string().trim().min(1).max(120).optional().default("Avenues Clinic"),
   role: z.enum(["ADMIN", "ANALYST", "VIEWER"]).optional().default("ANALYST"),
 });
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    const clientIp = getClientIp(request);
+    const rateLimitResult = enforceRateLimit(`register:${clientIp}`, {
+      maxRequests: 5,
+      windowMs: 15 * 60 * 1000,
+    });
+
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Too many registration attempts. Please try again later.",
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rateLimitResult.retryAfterSeconds),
+          },
+        }
+      );
+    }
+
     const body = await request.json();
     const data = registerSchema.parse(body);
+    const normalizedEmail = data.email.toLowerCase();
+    const adminRequest = isAdminSession(session);
+    const selfRegistrationEnabled = process.env.ALLOW_SELF_REGISTRATION === "true";
 
-    // Check if user already exists
+    if (!selfRegistrationEnabled && !adminRequest) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Self-registration is disabled. Please contact an administrator.",
+        },
+        { status: 403 }
+      );
+    }
+
     const existing = await prisma.user.findUnique({
-      where: { email: data.email.toLowerCase().trim() },
+      where: { email: normalizedEmail },
     });
 
     if (existing) {
@@ -28,8 +71,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find or create the organization
-    const orgSlug = data.organization
+    const assignedRole = adminRequest ? data.role : "ANALYST";
+    const organizationName = adminRequest
+      ? data.organization
+      : process.env.DEFAULT_ORGANIZATION_NAME || "Avenues Clinic";
+
+    const orgSlug = organizationName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
@@ -41,21 +88,20 @@ export async function POST(request: NextRequest) {
     if (!org) {
       org = await prisma.organization.create({
         data: {
-          name: data.organization,
+          name: organizationName,
           slug: orgSlug,
         },
       });
     }
 
-    // Hash password and create user
     const hashedPassword = await bcrypt.hash(data.password, 12);
 
     const user = await prisma.user.create({
       data: {
         name: data.name,
-        email: data.email.toLowerCase().trim(),
+        email: normalizedEmail,
         password: hashedPassword,
-        role: data.role,
+        role: assignedRole,
         org: { connect: { id: org.id } },
       },
     });
