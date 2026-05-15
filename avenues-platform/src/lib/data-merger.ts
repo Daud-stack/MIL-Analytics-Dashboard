@@ -1,4 +1,4 @@
-import { DashboardMetrics, LocationData, ClaimsMetrics, GenericDataset, ClaimSchemeData } from '../types';
+import { DashboardMetrics, LocationData, ClaimsMetrics, GenericDataset, ClaimSchemeData, ConversionMetrics } from '../types';
 
 /**
  * Server-side implementation of the data merge logic.
@@ -69,6 +69,119 @@ export const mergeRecordArrays = (
     }
   }
   return result;
+};
+
+export const mergeConversionMetrics = (
+  existing: ConversionMetrics | undefined,
+  incoming: ConversionMetrics | undefined
+): ConversionMetrics | undefined => {
+  if (!existing) return incoming;
+  if (!incoming) return existing;
+
+  const monthlyCasualty = addArrays(existing.monthlyCasualty, incoming.monthlyCasualty);
+  const monthlyInpatient = addArrays(existing.monthlyInpatient, incoming.monthlyInpatient);
+  const monthlyConversions = addArrays(existing.monthlyConversions, incoming.monthlyConversions);
+
+  const weightedAverageArrays = (
+    aAvg: number[] | undefined,
+    aCounts: number[] | undefined,
+    bAvg: number[] | undefined,
+    bCounts: number[] | undefined
+  ): number[] =>
+    Array.from({ length: MONTH_COUNT }, (_, i) => {
+      const aCount = aCounts?.[i] ?? 0;
+      const bCount = bCounts?.[i] ?? 0;
+      const totalCount = aCount + bCount;
+      if (totalCount <= 0) return 0;
+      return (((aAvg?.[i] ?? 0) * aCount) + ((bAvg?.[i] ?? 0) * bCount)) / totalCount;
+    });
+
+  const existingDirectCounts = existing.monthlyInpatient.map((count, i) =>
+    Math.max(0, count - (existing.monthlyConversions[i] ?? 0))
+  );
+  const incomingDirectCounts = incoming.monthlyInpatient.map((count, i) =>
+    Math.max(0, count - (incoming.monthlyConversions[i] ?? 0))
+  );
+
+  const totalCasualty = monthlyCasualty.reduce((sum, value) => sum + value, 0);
+  const totalInpatient = monthlyInpatient.reduce((sum, value) => sum + value, 0);
+  const totalConversions = monthlyConversions.reduce((sum, value) => sum + value, 0);
+  const existingDirectTotal = existingDirectCounts.reduce((sum, value) => sum + value, 0);
+  const incomingDirectTotal = incomingDirectCounts.reduce((sum, value) => sum + value, 0);
+
+  const weightedAverage = (aAvg: number, aCount: number, bAvg: number, bCount: number): number => {
+    const totalCount = aCount + bCount;
+    return totalCount > 0 ? ((aAvg * aCount) + (bAvg * bCount)) / totalCount : 0;
+  };
+
+  return {
+    monthlyCasualty,
+    monthlyInpatient,
+    monthlyConversions,
+    monthlyConversionRate: monthlyCasualty.map((count, i) =>
+      count > 0 ? (monthlyConversions[i] / count) * 100 : 0
+    ),
+    monthlyConversionALOS: weightedAverageArrays(
+      existing.monthlyConversionALOS,
+      existing.monthlyConversions,
+      incoming.monthlyConversionALOS,
+      incoming.monthlyConversions
+    ),
+    monthlyConversionRevenue: weightedAverageArrays(
+      existing.monthlyConversionRevenue,
+      existing.monthlyConversions,
+      incoming.monthlyConversionRevenue,
+      incoming.monthlyConversions
+    ),
+    monthlyDirectALOS: weightedAverageArrays(
+      existing.monthlyDirectALOS,
+      existingDirectCounts,
+      incoming.monthlyDirectALOS,
+      incomingDirectCounts
+    ),
+    monthlyDirectRevenue: weightedAverageArrays(
+      existing.monthlyDirectRevenue,
+      existingDirectCounts,
+      incoming.monthlyDirectRevenue,
+      incomingDirectCounts
+    ),
+    conversionsBySpecialty: incrementCountMap(existing.conversionsBySpecialty, incoming.conversionsBySpecialty),
+    conversionsByICD: incrementCodeMap(existing.conversionsByICD, incoming.conversionsByICD),
+    conversionsByWard: incrementCountMap(existing.conversionsByWard, incoming.conversionsByWard),
+    conversionsByMedAid: incrementCountMap(existing.conversionsByMedAid, incoming.conversionsByMedAid),
+    conversionsByAge: incrementCountMap(existing.conversionsByAge, incoming.conversionsByAge),
+    conversionsByGender: incrementCountMap(existing.conversionsByGender, incoming.conversionsByGender),
+    conversionRecords: [...existing.conversionRecords, ...incoming.conversionRecords]
+      .sort((a, b) => b.revenue - a.revenue),
+    totalCasualty,
+    totalInpatient,
+    totalConversions,
+    overallConversionRate: totalCasualty > 0 ? (totalConversions / totalCasualty) * 100 : 0,
+    avgConversionLOS: weightedAverage(
+      existing.avgConversionLOS,
+      existing.totalConversions,
+      incoming.avgConversionLOS,
+      incoming.totalConversions
+    ),
+    avgDirectLOS: weightedAverage(
+      existing.avgDirectLOS,
+      existingDirectTotal,
+      incoming.avgDirectLOS,
+      incomingDirectTotal
+    ),
+    avgConversionRevenue: weightedAverage(
+      existing.avgConversionRevenue,
+      existing.totalConversions,
+      incoming.avgConversionRevenue,
+      incoming.totalConversions
+    ),
+    avgDirectRevenue: weightedAverage(
+      existing.avgDirectRevenue,
+      existingDirectTotal,
+      incoming.avgDirectRevenue,
+      incomingDirectTotal
+    ),
+  };
 };
 
 const genericRowFingerprint = (dataset: GenericDataset, row: Record<string, unknown>): string =>
@@ -291,6 +404,7 @@ export function mergeLocation(
     genders: incrementCountMap(a.genders, scaleCountMap(b.genders)),
     los: incrementCountMap(a.los, scaleCountMap(b.los)),
     rawRows: [...(a.rawRows || []), ...newRows],
+    conversions: mergeConversionMetrics(a.conversions, b.conversions),
   };
 }
 

@@ -993,8 +993,7 @@ export function parseLocationCSV(csvText: string): YearData {
   }
 
   function toAgeGroup(age: number): string {
-    if (age < 1) return 'Neonate';
-    if (age < 18) return '1-17';
+    if (age < 18) return '0-17';
     if (age < 30) return '18-29';
     if (age < 45) return '30-44';
     if (age < 60) return '45-59';

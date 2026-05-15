@@ -22,16 +22,6 @@ import { ChartTooltipProps, MONTHS } from '@/types';
 import { formatNumber, generateCSV, downloadCSV } from '@/lib/utils';
 import { useDashboard } from '@/store';
 
-function seededRandom(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 interface ChartData {
   month: string;
   casualty?: number;
@@ -61,6 +51,7 @@ function calculateZScore(values: number[]): number[] {
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
   const std = Math.sqrt(variance);
+  if (std === 0 || !Number.isFinite(std)) return values.map(() => 0);
   return values.map((v) => (v - mean) / std);
 }
 
@@ -138,12 +129,10 @@ export default function CasualtyPage() {
   const activeMonths = metrics.admCasualty.filter(v => v > 0).length || 1;
   const monthlyAvg = totalCasualty / activeMonths;
   const casualtyArray = metrics.admCasualty;
-  const rng = seededRandom(42);
-  const transferRates = casualtyArray.map((v) => {
-    if (v === 0) return 0;
-    const transfer = Math.floor(v * (0.25 + rng() * 0.15)); // Estimated 25-40% transfer rate
-    return (transfer / v) * 100;
-  });
+  const transferCounts = metrics.casToInpatient || new Array(12).fill(0);
+  const transferRates = casualtyArray.map((v, idx) =>
+    v > 0 ? ((transferCounts[idx] || 0) / v) * 100 : 0
+  );
   const activeTransferRates = transferRates.filter(v => v > 0);
   const avgTransferRate = activeTransferRates.length > 0
     ? activeTransferRates.reduce((a, b) => a + b, 0) / activeTransferRates.length
@@ -166,8 +155,8 @@ export default function CasualtyPage() {
   const casualtyVsTransfersData = MONTHS.map((month, idx) => ({
     month: month.substring(0, 3),
     casualty: metrics.admCasualty[idx],
-    transfers: Math.floor(metrics.admCasualty[idx] * (transferRates[idx] / 100)),
-    notTransferred: Math.floor(metrics.admCasualty[idx] * (1 - transferRates[idx] / 100)),
+    transfers: transferCounts[idx] || 0,
+    notTransferred: Math.max(0, metrics.admCasualty[idx] - (transferCounts[idx] || 0)),
   }));
 
   // Day of week distribution

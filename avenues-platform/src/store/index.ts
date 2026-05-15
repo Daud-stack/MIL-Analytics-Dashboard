@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { produce } from 'immer';
 import { StoreState, FilterState, YearData, Theme, MONTHS, DashboardMetrics, UploadRecord, GenericDataset, ClaimsMetrics, LocationData, ClaimSchemeData, DailyDataPatch } from '@/types';
+import { mergeConversionMetrics } from '@/lib/data-merger';
 
 const currentYear = new Date().getFullYear();
 
@@ -482,6 +483,7 @@ export const useStore = create<StoreState>()(
               genders: incrementCountMap(a.genders, scaleCountMap(b.genders)),
               los: incrementCountMap(a.los, scaleCountMap(b.los)),
               rawRows: [...(a.rawRows || []), ...newRows],
+              conversions: mergeConversionMetrics(a.conversions, b.conversions),
             };
           } else if (normalizedData.location) {
             mergedLocation = normalizedData.location;
