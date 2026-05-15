@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { RoleGuard } from '@/components/auth/role-guard';
 import { useNotifications } from '@/store/notifications';
 import { useRouter } from 'next/navigation';
-import { useStore, useAddYearData, useUploads, useRemoveUpload, useCurrentYear, useDatasetList, useAddDataset, useRemoveDataset, useIsFileProcessed, useMarkFileProcessed, useYears } from '@/store';
+import { useStore, useAddYearData, useUploads, useRemoveUpload, useCurrentYear, useDatasetList, useRemoveDataset, useIsFileProcessed, useMarkFileProcessed, useYears } from '@/store';
 import { YearData, UploadRecord, UploadCategory, GenericDataset } from '@/types';
 import { parseDashboardCSV, parseLocationCSV, parseClaimsCSV, detectYear, detectFacilityName } from '@/lib/parsers';
 import { parseGenericCSV } from '@/lib/generic-parser';
@@ -289,7 +289,6 @@ export default function UploadPage() {
   const existingUploads = useUploads();
   const existingDatasets = useDatasetList();
   const removeUpload = useRemoveUpload();
-  const addDataset = useAddDataset();
   const removeDataset = useRemoveDataset();
   const currentYear = useCurrentYear();
   const isFileProcessed = useIsFileProcessed();
@@ -428,7 +427,7 @@ export default function UploadPage() {
   };
 
   const handleProcessUploads = async () => {
-    const completed = uploads.filter(u => u.status === 'complete' && u.parsedData);
+    const completed = uploads.filter(u => u.status === 'complete' && (u.parsedData || u.genericData));
     if (completed.length === 0) return;
 
     setProcessing(true);
@@ -453,7 +452,31 @@ export default function UploadPage() {
         // Handle Generic datasets separately
         if (upload.type === 'Generic' && upload.genericData) {
           console.log(`[Upload] Adding generic dataset "${upload.genericData.name}" for year ${upload.year}`);
-          addDataset(upload.year, upload.genericData);
+          const uploadId = typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : Date.now().toString(36) + Math.random().toString(36).substring(7);
+
+          const uploadRecord: UploadRecord = {
+            id: uploadId,
+            category: 'Generic',
+            fileName: upload.file.name,
+            fileHash: upload.fileHash,
+            uploadedAt: now,
+            rowCount: upload.rowCount,
+            action: 'append',
+          };
+
+          addYearData(upload.year, {
+            year: upload.year,
+            dash: null,
+            dashboard: null,
+            loc: null,
+            location: null,
+            apac: null,
+            claims: null,
+            datasets: { [upload.genericData.id]: upload.genericData },
+            uploads: [uploadRecord],
+          });
           if (upload.fileHash) markFileProcessed(upload.fileHash);
           return;
         }
@@ -559,7 +582,7 @@ export default function UploadPage() {
       const dbPushPromises: Promise<void>[] = [];
       const pushedYears = new Set<number>();
       sorted.forEach(upload => {
-        if (upload.isDuplicate || !upload.parsedData) return;
+        if ((upload.isDuplicate && !upload.forceProcess) || (!upload.parsedData && !upload.genericData)) return;
         if (pushedYears.has(upload.year)) return;
         pushedYears.add(upload.year);
       });

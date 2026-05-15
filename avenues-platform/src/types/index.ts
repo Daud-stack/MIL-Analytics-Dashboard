@@ -258,7 +258,7 @@ export interface ClaimSchemeData {
 }
 
 // Upload tracking — one record per file ingested
-export type UploadCategory = 'Dashboard' | 'Location' | 'Claims';
+export type UploadCategory = 'Dashboard' | 'Location' | 'Claims' | 'Generic';
 
 export interface UploadRecord {
   id: string;                 // unique upload id (crypto.randomUUID)
