@@ -1,0 +1,9 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.vscode/
+data_reservoir/raw/
+data_reservoir/processed/
+*.log
+.DS_Store
