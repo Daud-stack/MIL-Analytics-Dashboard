@@ -152,7 +152,7 @@ Before setting up as a service, test it manually:
 
 3. **Run the watcher**
    ```powershell
-   npx tsx scripts/file-watcher.ts
+   npx tsx scripts/file-watcher-main.ts
    ```
 
 4. **Test with a CSV file**
@@ -197,7 +197,7 @@ Once manual testing succeeds, you can install the watcher as a Windows Service t
    const svc = new Service({
      name: 'MilAnalyticsFileWatcher',
      description: 'Monitors CSV uploads and ingests to the analytics dashboard',
-     script: path.join(__dirname, 'file-watcher.ts'),
+     script: path.join(__dirname, 'file-watcher-main.ts'),
      scriptOptions: '--no-deprecation',
      nodeOptions: ['--no-warnings'],
      env: {
@@ -237,7 +237,7 @@ If node-windows doesn't work, use NSSM:
 2. **Create the service**
    ```powershell
    cd C:\nssm\win64
-   .\nssm.exe install AvenuesClinicalFileWatcher "C:\Program Files\nodejs\node.exe" "C:\avenues-platform\node_modules\.bin\tsx C:\avenues-platform\scripts\file-watcher.ts"
+   .\nssm.exe install AvenuesClinicalFileWatcher "C:\Program Files\nodejs\node.exe" "C:\avenues-platform\node_modules\.bin\tsx C:\avenues-platform\scripts\file-watcher-main.ts"
    ```
 
 3. **Configure environment file**
@@ -328,7 +328,7 @@ Ensure the service account has proper access:
 3. **Run manually to see detailed errors**
    ```powershell
    cd C:\avenues-platform
-   npx tsx scripts/file-watcher.ts
+   npx tsx scripts/file-watcher-main.ts
    ```
 
 ### Files not being detected
@@ -414,7 +414,7 @@ For issues or questions:
 
 | Command | Purpose |
 |---------|---------|
-| `npx tsx scripts/file-watcher.ts` | Run watcher manually |
+| `npx tsx scripts/file-watcher-main.ts` | Run watcher manually |
 | `Start-Service -Name AvenuesClinicalFileWatcher` | Start service |
 | `Stop-Service -Name AvenuesClinicalFileWatcher` | Stop service |
 | `Restart-Service -Name AvenuesClinicalFileWatcher` | Restart service |

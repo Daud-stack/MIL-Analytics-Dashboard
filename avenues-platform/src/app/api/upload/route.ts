@@ -42,7 +42,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Read file content
-    const text = await file.text();
+    let text = await file.text();
+    // Strip UTF-8 BOM so the first header isn't silently corrupted.
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
 
     // Parse CSV
     const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });

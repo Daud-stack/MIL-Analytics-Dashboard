@@ -9,6 +9,15 @@ import Papa from 'papaparse';
 import { DashboardMetrics, LocationData, ClaimsMetrics, YearData, ConversionMetrics, ConversionRecord } from '@/types';
 import { DEFAULT_FACILITY_NAME } from '@/lib/app-config';
 
+// Excel-exported CSVs commonly include a UTF-8 BOM (\uFEFF) at the start of
+// the file. If we don't strip it, the first column header becomes
+// "\uFEFFAdmissions" and every lookup against parsed rows fails silently,
+// producing empty metric objects that look like a successful parse.
+function stripBom(text: string): string {
+  return text && text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+
 // ===== COLUMN DEFINITIONS =====
 
 const DASHBOARD_KEYWORDS = [
@@ -77,17 +86,33 @@ export function detectFileType(
 /**
  * Extract year from CSV text
  */
+/**
+ * Try to detect the year from a CSV's first 10 lines.
+ * Returns null when no `202[0-9]` token is present so callers can
+ * decide whether to fall back, refuse, or prompt the user.
+ */
+export function detectYearOrNull(csvText: string): number | null {
+  csvText = stripBom(csvText);
+  const firstLines = csvText.split('\n').slice(0, 10).join('\n');
+  const yearMatch = firstLines.match(/\b(202[0-9])\b/);
+  return yearMatch ? parseInt(yearMatch[1], 10) : null;
+}
+
+/**
+ * Detect the year, defaulting to the current year if not found.
+ * Logs a console warning when the fallback fires so the silent
+ * "file under the wrong year" bug becomes visible in watcher/
+ * browser logs. Prefer detectYearOrNull when you want to refuse
+ * the upload instead of guessing.
+ */
 export function detectYear(csvText: string): number {
-  const match = csvText.match(/\b(202[0-9])\b/);
-  if (match) return parseInt(match[1], 10);
-
-  const lines = csvText.split('\n');
-  for (const line of lines.slice(0, 10)) {
-    const m = line.match(/\b(20\d{2})\b/);
-    if (m) return parseInt(m[1], 10);
-  }
-
-  return new Date().getFullYear();
+  const found = detectYearOrNull(csvText);
+  if (found !== null) return found;
+  const fallback = new Date().getFullYear();
+  console.warn(
+    `[detectYear] No year token (202[0-9]) found in the first 10 lines; defaulting to ${fallback}. The data may be filed under the wrong year.`
+  );
+  return fallback;
 }
 
 /**
@@ -282,6 +307,7 @@ function emptyDashMetrics(year: number): DashboardMetrics {
  *   - Otherwise → Format A
  */
 export function parseDashboardCSV(csvText: string): YearData {
+  csvText = stripBom(csvText);
   // Keep ALL lines (including blanks) so section breaks can be detected
   const rawLines = csvText.split('\n').map(l => l.trim());
   // Filtered version for header detection (first 3 non-empty lines)
@@ -781,6 +807,7 @@ export function parseDashboardCSV(csvText: string): YearData {
  * Total, LOS, Theatre date, Anaesthetist, etc.
  */
 export function parseLocationCSV(csvText: string): YearData {
+  csvText = stripBom(csvText);
   const result = Papa.parse(csvText, {
     header: true,
     skipEmptyLines: true,
@@ -1262,8 +1289,9 @@ export function parseLocationCSV(csvText: string): YearData {
  * Handles leading junk/noise in report files by scanning for the header row.
  */
 export function parseClaimsCSV(csvText: string): YearData {
+  csvText = stripBom(csvText);
   const lines = csvText.split('\n');
-  let headerRowIndex = 0;
+  const headerRowIndex = 0;
 
   // Scan first 15 lines for the real header row (most keyword matches)
   const scanLimit = Math.min(lines.length, 15);
@@ -1438,6 +1466,7 @@ export function parseClaimsCSV(csvText: string): YearData {
  * Auto-detect and parse CSV file
  */
 export function autoParseCSV(csvText: string): YearData {
+  csvText = stripBom(csvText);
   const result = Papa.parse(csvText, { header: true, skipEmptyLines: true });
   const headers = Object.keys((result.data[0] || {}) as Record<string, unknown>);
   const firstRow = (result.data[0] || {}) as Record<string, unknown>;

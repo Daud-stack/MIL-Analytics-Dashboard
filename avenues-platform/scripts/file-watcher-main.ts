@@ -21,6 +21,7 @@ import {
   parseDashboardCSV,
   parseLocationCSV,
   parseClaimsCSV,
+  detectYearOrNull,
 } from '../src/lib/parsers';
 import { parseGenericCSV } from '../src/lib/generic-parser';
 
@@ -249,6 +250,8 @@ async function processFile(filePath: string): Promise<void> {
   let csvText: string;
   try {
     csvText = fs.readFileSync(filePath, 'utf-8');
+    // Strip UTF-8 BOM left behind by Excel-exported CSVs.
+    if (csvText.charCodeAt(0) === 0xfeff) csvText = csvText.slice(1);
   } catch (error) {
     console.error(`[watcher] Could not read file content: ${fileName}`, error);
     archiveFile(filePath, fileName, '_error');
@@ -259,6 +262,13 @@ async function processFile(filePath: string): Promise<void> {
     console.log(`[watcher] Empty file, skipping: ${fileName}`);
     archiveFile(filePath, fileName, '_empty');
     return;
+  }
+
+  // If the CSV itself doesn't carry a year, the parsers fall back to
+  // new Date().getFullYear(). Surface that decision so it isn't silent.
+  const yearInCsv = detectYearOrNull(csvText);
+  if (yearInCsv === null) {
+    console.warn(`[watcher] No year found in ${fileName}; will file under current year.`);
   }
 
   const fileType = detectFileType(csvText);

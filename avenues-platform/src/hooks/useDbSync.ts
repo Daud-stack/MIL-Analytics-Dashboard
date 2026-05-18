@@ -78,6 +78,10 @@ export function useDbSync() {
           claims: data.claims || data.apac || null,
           datasets: data.datasets || {},
           uploads: data.uploads || [],
+          // Preserve the server-side dedup index. Without this the next
+          // re-upload of the same file via /api/data/ingest no longer
+          // short-circuits and the merger double-counts.
+          processedHashes: data.processedHashes || [],
         }),
       });
       if (!res.ok) {

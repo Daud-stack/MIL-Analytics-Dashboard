@@ -157,6 +157,8 @@ export function parseGenericCSV(
   fileName: string,
   datasetName?: string,
 ): GenericDataset {
+  // Strip UTF-8 BOM (\uFEFF) so the first header isn't silently corrupted.
+  if (csvText && csvText.charCodeAt(0) === 0xfeff) csvText = csvText.slice(1);
   const result = Papa.parse(csvText, {
     header: true,
     skipEmptyLines: true,
@@ -198,9 +200,12 @@ export function parseGenericCSV(
     _uploadedAt: now,
   }));
 
-  const id = typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : Date.now().toString(36) + Math.random().toString(36).substring(7);
+  // Use the deterministic schemaId as the dataset id. Same CSV shape -> same
+  // id -> same key under year_data.datasets, so re-uploads collapse into one
+  // entry instead of accumulating randomly-keyed duplicates. mergeGenericDatasets
+  // already groups by schemaId, so this just aligns the storage key with the
+  // dedup key.
+  const id = schemaId;
 
   const name = datasetName || fileName.replace(/\.csv$/i, '').replace(/[_-]+/g, ' ').trim();
 

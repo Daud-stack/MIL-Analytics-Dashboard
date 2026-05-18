@@ -330,6 +330,10 @@ export interface YearData {
   /** Maps file hash -> DashboardMetrics for idempotent summation */
   dashboardSnapshots?: Record<string, DashboardMetrics>;
   datasets: Record<string, GenericDataset>; // key = dataset name/schemaId
+  /** SHA-256 hashes of files already ingested for this year - file-watcher
+   * dedup index. Optional client-side (DB is source of truth), but when
+   * present is forwarded on writes so /api/data preserves it via set-union. */
+  processedHashes?: string[];
 }
 
 // User & Auth Types

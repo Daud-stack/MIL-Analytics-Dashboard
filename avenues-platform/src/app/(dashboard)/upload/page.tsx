@@ -602,6 +602,8 @@ export default function UploadPage() {
               claims: yearData.claims || yearData.apac || null,
               datasets: yearData.datasets || {},
               uploads: yearData.uploads || [],
+              // Persist the file-hash dedup index so re-uploads short-circuit.
+              processedHashes: yearData.processedHashes || [],
             }),
           }).then(res => {
             if (!res.ok) console.error('[Upload] DB push failed for year', yr, res.status);

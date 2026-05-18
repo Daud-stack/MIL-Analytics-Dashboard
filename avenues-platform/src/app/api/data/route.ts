@@ -136,7 +136,21 @@ export async function POST(request: NextRequest) {
     if (claims) updateData.claims = claims as Prisma.InputJsonValue;
     if (datasets) updateData.datasets = datasets as Prisma.InputJsonValue;
     if (uploads) updateData.uploads = uploads as Prisma.InputJsonValue;
-    if (processedHashes) updateData.processedHashes = processedHashes;
+    // processedHashes is the file-hash dedup index. Treat as set-union, never
+    // as replace - a client that doesn't know about a hash must not be able
+    // to remove it. The watcher and previous browser uploads contribute hashes;
+    // any one of those should be enough to short-circuit a re-ingest.
+    let mergedHashes: string[] | undefined;
+    if (Array.isArray(processedHashes)) {
+      const existing = await prisma.yearDataRecord.findUnique({
+        where: { year_orgId: { year, orgId } },
+        select: { processedHashes: true },
+      });
+      mergedHashes = Array.from(
+        new Set([...(existing?.processedHashes ?? []), ...processedHashes])
+      );
+      updateData.processedHashes = mergedHashes;
+    }
 
     const record = await prisma.yearDataRecord.upsert({
       where: { year_orgId: { year, orgId } },
@@ -148,7 +162,7 @@ export async function POST(request: NextRequest) {
         claims: claims ?? undefined,
         datasets: datasets ?? {},
         uploads: uploads ?? [],
-        processedHashes: processedHashes ?? [],
+        processedHashes: mergedHashes ?? (processedHashes ?? []),
       },
       update: updateData,
     });
