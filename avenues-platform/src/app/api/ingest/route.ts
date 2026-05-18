@@ -1,130 +1,194 @@
 /**
- * /api/ingest — Serves ingested data to the browser
+ * /api/ingest - Serves freshly ingested year data to the browser.
  *
- * GET /api/ingest
- *   Returns the full ingest store (years + log)
- *   Query params:
- *     ?since=<ISO timestamp> — only return data updated after this time
- *     ?year=<number>         — return only a specific year
+ * This reads from the Postgres `year_data` table: the same table written by
+ * the CSV file watcher through POST /api/data/ingest. Keeping both paths on
+ * one data store lets the dashboard poller see watcher uploads in deployed
+ * environments where local JSON files are not durable.
  *
- * GET /api/ingest?action=log
- *   Returns only the processing log (for the upload history page)
- *
- * DELETE /api/ingest
- *   Clears the ingest store (for testing/reset)
+ * Query parameters:
+ *   ?since=<ISO timestamp>   Return only data updated after this time.
+ *   ?year=<number>           Return only this year.
+ *   ?action=log              Return upload history from row upload metadata.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import {
-  readIngestStore,
-  writeIngestStore,
-  getStorePath,
-} from '@/lib/ingest-store';
-import fs from 'fs';
+import prisma from '@/lib/prisma';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+type UploadEntry = {
+  fileName?: string;
+  sha256?: string;
+  category?: string;
+  fileType?: string;
+  year?: number;
+  uploadedAt?: string;
+  processedAt?: string;
+};
+
+type YearDataWhere = {
+  orgId: string;
+  year?: number;
+  updatedAt?: { gt: Date };
+};
+
+async function resolveOrgId(request: NextRequest): Promise<
+  | { orgId: string }
+  | { response: NextResponse }
+> {
+  const session = await auth();
+  const apiKey = request.headers.get('x-api-key');
+  const validApiKey =
+    !!process.env.INGEST_API_KEY && apiKey === process.env.INGEST_API_KEY;
+
+  if (validApiKey) {
+    const orgId = request.headers.get('x-org-id');
+    if (!orgId) {
+      return {
+        response: NextResponse.json(
+          { error: 'X-Org-Id header required when using API key' },
+          { status: 400 }
+        ),
+      };
+    }
+    return { orgId };
+  }
+
+  if (!session?.user) {
+    return {
+      response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { orgId: true },
+  });
+
+  if (!user?.orgId) {
+    return {
+      response: NextResponse.json(
+        { error: 'No organization assigned' },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return { orgId: user.orgId };
+}
 
 export async function GET(request: NextRequest) {
   try {
-    // Auth: require session OR valid API key (for file watcher M2M calls)
-    const session = await auth();
-    const apiKey = request.headers.get('x-api-key') || request.headers.get('X-API-Key');
-    const validApiKey = process.env.INGEST_API_KEY && apiKey === process.env.INGEST_API_KEY;
+    const resolved = await resolveOrgId(request);
+    if ('response' in resolved) return resolved.response;
 
-    if (!session?.user && !validApiKey) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const storePath = getStorePath();
-
-    // Check if store file exists
-    if (!fs.existsSync(storePath)) {
-      return NextResponse.json({
-        years: {},
-        log: [],
-        updatedAt: null,
-        hasData: false,
-      });
-    }
-
-    const store = readIngestStore();
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
     const since = searchParams.get('since');
     const yearParam = searchParams.get('year');
 
-    // Return only the log
-    if (action === 'log') {
-      return NextResponse.json({
-        log: store.log,
-        totalFiles: store.log.length,
-        uniqueHashes: store.processedHashes.length,
-      });
+    const where: YearDataWhere = { orgId: resolved.orgId };
+
+    if (yearParam) {
+      const year = parseInt(yearParam, 10);
+      if (Number.isFinite(year) && year >= 2000 && year <= 2100) {
+        where.year = year;
+      }
     }
 
-    // Filter by "since" timestamp (client sends its last sync time)
     if (since) {
       const sinceDate = new Date(since);
-      const storeDate = new Date(store.updatedAt);
-      if (storeDate <= sinceDate) {
-        // No new data since client's last sync
+      if (!Number.isNaN(sinceDate.getTime())) {
+        where.updatedAt = { gt: sinceDate };
+      }
+    }
+
+    // Fast path for normal polling. If no row changed after `since`, the
+    // client can skip the merge work.
+    if (since && !yearParam && action !== 'log') {
+      const latest = await prisma.yearDataRecord.findFirst({
+        where: { orgId: resolved.orgId },
+        orderBy: { updatedAt: 'desc' },
+        select: { updatedAt: true },
+      });
+      const sinceDate = new Date(since);
+
+      if (
+        !latest ||
+        (!Number.isNaN(sinceDate.getTime()) && latest.updatedAt <= sinceDate)
+      ) {
         return NextResponse.json({
           hasNewData: false,
-          updatedAt: store.updatedAt,
+          updatedAt: latest?.updatedAt?.toISOString() ?? null,
         });
       }
     }
 
-    // Filter by year
-    if (yearParam) {
-      const yearData = store.years[yearParam];
+    const records = await prisma.yearDataRecord.findMany({
+      where,
+      orderBy: { year: 'desc' },
+    });
+
+    if (action === 'log') {
+      const log: UploadEntry[] = records.flatMap((record) => {
+        const uploads = (record.uploads ?? []) as UploadEntry[];
+        return uploads.map((upload) => ({ ...upload, year: record.year }));
+      });
+
+      log.sort((a, b) => {
+        const timeA = Date.parse(a.uploadedAt ?? a.processedAt ?? '') || 0;
+        const timeB = Date.parse(b.uploadedAt ?? b.processedAt ?? '') || 0;
+        return timeB - timeA;
+      });
+
       return NextResponse.json({
-        years: yearData ? { [yearParam]: yearData } : {},
-        log: store.log.filter(e => String(e.year) === yearParam),
-        updatedAt: store.updatedAt,
-        hasData: !!yearData,
+        log,
+        totalFiles: log.length,
+        uniqueHashes: new Set(
+          records.flatMap((record) => record.processedHashes ?? [])
+        ).size,
       });
     }
 
-    // Return full store
-    return NextResponse.json({
-      years: store.years,
-      log: store.log,
-      updatedAt: store.updatedAt,
-      hasData: Object.keys(store.years).length > 0,
-      processedFiles: store.processedHashes.length,
-    });
-  } catch (error) {
-    console.error('[API /ingest] Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to read ingest store' },
-      { status: 500 }
-    );
-  }
-}
+    const years: Record<string, unknown> = {};
+    let maxUpdatedAt: Date | null = null;
 
-export async function DELETE(request: NextRequest) {
-  try {
-    // Auth: require session with ADMIN role OR valid API key
-    const session = await auth();
-    const apiKey = request.headers.get('x-api-key') || request.headers.get('X-API-Key');
-    const validApiKey = process.env.INGEST_API_KEY && apiKey === process.env.INGEST_API_KEY;
+    for (const record of records) {
+      years[String(record.year)] = {
+        year: record.year,
+        dash: record.dashboard,
+        dashboard: record.dashboard,
+        loc: record.location,
+        location: record.location,
+        apac: record.claims,
+        claims: record.claims,
+        datasets: record.datasets ?? {},
+        uploads: record.uploads ?? [],
+        processedHashes: record.processedHashes ?? [],
+      };
 
-    if (!validApiKey && (!session?.user || (session.user as { role?: string }).role !== 'ADMIN')) {
-      return NextResponse.json({ error: 'Unauthorized — admin access required' }, { status: 401 });
+      if (!maxUpdatedAt || record.updatedAt > maxUpdatedAt) {
+        maxUpdatedAt = record.updatedAt;
+      }
     }
 
-    const emptyStore = {
-      years: {},
-      processedHashes: [] as string[],
-      log: [] as { fileName: string; sha256: string; fileType: string; year: number; processedAt: string; rowCount?: number }[],
-      updatedAt: new Date().toISOString(),
-    };
-    writeIngestStore(emptyStore);
-    return NextResponse.json({ success: true, message: 'Ingest store cleared' });
+    return NextResponse.json({
+      years,
+      hasData: records.length > 0,
+      hasNewData: records.length > 0,
+      updatedAt: maxUpdatedAt?.toISOString() ?? null,
+      processedFiles: records.reduce(
+        (count, record) => count + (record.processedHashes?.length ?? 0),
+        0
+      ),
+    });
   } catch (error) {
-    console.error('[API /ingest] Delete error:', error);
+    console.error('[API /ingest GET] Error:', error);
     return NextResponse.json(
-      { error: 'Failed to clear ingest store' },
+      { error: 'Failed to read ingested data' },
       { status: 500 }
     );
   }

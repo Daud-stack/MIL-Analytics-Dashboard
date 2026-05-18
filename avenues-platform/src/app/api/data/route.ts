@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
+
+// Force this route to be fully dynamic so no caching layer ever
+// returns stale year_data after a watcher write.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 /**
  * GET /api/data?year=2026&orgId=xxx
@@ -122,12 +128,14 @@ export async function POST(request: NextRequest) {
 
     const orgId = user.orgId;
 
-    const updateData: any = { updatedAt: new Date() };
-    if (dashboard) updateData.dashboard = dashboard;
-    if (location) updateData.location = location;
-    if (claims) updateData.claims = claims;
-    if (datasets) updateData.datasets = datasets;
-    if (uploads) updateData.uploads = uploads;
+    const updateData: Prisma.YearDataRecordUpdateInput = {
+      updatedAt: new Date(),
+    };
+    if (dashboard) updateData.dashboard = dashboard as Prisma.InputJsonValue;
+    if (location) updateData.location = location as Prisma.InputJsonValue;
+    if (claims) updateData.claims = claims as Prisma.InputJsonValue;
+    if (datasets) updateData.datasets = datasets as Prisma.InputJsonValue;
+    if (uploads) updateData.uploads = uploads as Prisma.InputJsonValue;
     if (processedHashes) updateData.processedHashes = processedHashes;
 
     const record = await prisma.yearDataRecord.upsert({

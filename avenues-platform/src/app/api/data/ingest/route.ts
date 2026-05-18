@@ -2,86 +2,81 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
-import { mergeDashboard, mergeLocation, mergeClaims, mergeGenericDatasets } from '@/lib/data-merger';
-import type { DashboardMetrics, LocationData, ClaimsMetrics, GenericDataset } from '@/types';
+import {
+  mergeClaims,
+  mergeDashboard,
+  mergeGenericDatasets,
+  mergeLocation,
+} from '@/lib/data-merger';
+import type {
+  ClaimsMetrics,
+  DashboardMetrics,
+  GenericDataset,
+  LocationData,
+} from '@/types';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const IngestSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  fileType: z.enum(['Dashboard', 'Location', 'Claims', 'Generic']),
+  data: z.record(z.string(), z.unknown()).refine(
+    (value) => Object.keys(value).length > 0,
+    { message: 'data must be a non-empty object' }
+  ),
+  fileName: z.string().min(1).max(500),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i, 'Must be a valid SHA-256 hash'),
+});
 
 /**
  * POST /api/data/ingest
  *
  * Machine-to-machine API for the file watcher to ingest parsed CSV data.
- * Requires X-API-Key header for authentication.
- *
- * Request headers:
- *   X-API-Key  — validates against process.env.INGEST_API_KEY
- *   X-Org-Id   — organization ID for the data
- *
- * Request body:
- *   {
- *     year: number,
- *     fileType: 'Dashboard' | 'Location' | 'Claims' | 'Generic',
- *     data: object,           // parsed result payload
- *     fileName: string,
- *     sha256: string          // file hash for deduplication
- *   }
- *
- * Response:
- *   {
- *     success: true,
- *     year: number,
- *     fileType: string,
- *     fileName: string,
- *     message: string,
- *     duplicate?: boolean
- *   }
+ * Requires X-API-Key and X-Org-Id headers.
  */
 export async function POST(request: NextRequest) {
   try {
-    // ── Validate API Key ──
-    const apiKey = request.headers.get('X-API-Key');
+    const apiKey = request.headers.get('x-api-key');
     if (!apiKey || apiKey !== process.env.INGEST_API_KEY) {
       return NextResponse.json({ error: 'Invalid API key' }, { status: 401 });
     }
 
-    // ── Validate Org ID ──
-    const orgId = request.headers.get('X-Org-Id');
+    const orgId = request.headers.get('x-org-id');
     if (!orgId) {
-      return NextResponse.json({ error: 'X-Org-Id header required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'X-Org-Id header required' },
+        { status: 400 }
+      );
     }
 
-    // ── Verify organization exists ──
     const org = await prisma.organization.findUnique({
       where: { id: orgId },
       select: { id: true },
     });
 
     if (!org) {
-      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Organization not found' },
+        { status: 404 }
+      );
     }
-
-    // ── Parse and validate request body ──
-    const IngestSchema = z.object({
-      year: z.number().int().min(2000).max(2100),
-      fileType: z.enum(['Dashboard', 'Location', 'Claims', 'Generic']),
-      data: z.record(z.string(), z.unknown()).refine(val => Object.keys(val).length > 0, {
-        message: 'data must be a non-empty object',
-      }),
-      fileName: z.string().min(1).max(500),
-      sha256: z.string().regex(/^[a-f0-9]{64}$/i, 'Must be a valid SHA-256 hash'),
-    });
 
     const body = await request.json();
     const parsed = IngestSchema.safeParse(body);
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Validation failed', details: parsed.error.issues.map(i => i.message) },
+        {
+          error: 'Validation failed',
+          details: parsed.error.issues.map((issue) => issue.message),
+        },
         { status: 400 }
       );
     }
 
     const { year, fileType, data, fileName, sha256 } = parsed.data;
 
-    // ── Check for duplicate (same SHA-256) ──
     const existing = await prisma.yearDataRecord.findUnique({
       where: { year_orgId: { year, orgId } },
       select: {
@@ -94,11 +89,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const existingDashboard = existing?.dashboard as unknown as DashboardMetrics | null | undefined;
-    const existingLocation = existing?.location as unknown as LocationData | null | undefined;
-    const existingClaims = existing?.claims as unknown as ClaimsMetrics | null | undefined;
-    const existingDatasets = existing?.datasets as unknown as Record<string, GenericDataset> | null | undefined;
-
     if (existing?.processedHashes?.includes(sha256)) {
       return NextResponse.json({
         success: true,
@@ -110,19 +100,43 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ── Build the update payload using merging ──
+    const existingDashboard = existing?.dashboard as
+      | DashboardMetrics
+      | null
+      | undefined;
+    const existingLocation = existing?.location as
+      | LocationData
+      | null
+      | undefined;
+    const existingClaims = existing?.claims as ClaimsMetrics | null | undefined;
+    const existingDatasets = existing?.datasets as
+      | Record<string, GenericDataset>
+      | null
+      | undefined;
+
     const updateData: Record<string, unknown> = {};
     if (fileType === 'Dashboard') {
-      updateData.dashboard = mergeDashboard(existingDashboard ?? null, data as unknown as DashboardMetrics);
+      updateData.dashboard = mergeDashboard(
+        existingDashboard ?? null,
+        data as unknown as DashboardMetrics
+      );
     } else if (fileType === 'Location') {
-      updateData.location = mergeLocation(existingLocation ?? null, data as unknown as LocationData);
+      updateData.location = mergeLocation(
+        existingLocation ?? null,
+        data as unknown as LocationData
+      );
     } else if (fileType === 'Claims') {
-      updateData.claims = mergeClaims(existingClaims ?? null, data as unknown as ClaimsMetrics);
-    } else if (fileType === 'Generic') {
-      updateData.datasets = mergeGenericDatasets(existingDatasets, data as unknown as Record<string, GenericDataset>);
+      updateData.claims = mergeClaims(
+        existingClaims ?? null,
+        data as unknown as ClaimsMetrics
+      );
+    } else {
+      updateData.datasets = mergeGenericDatasets(
+        existingDatasets,
+        data as unknown as Record<string, GenericDataset>
+      );
     }
 
-    // ── Build upload metadata ──
     const uploadRecord = {
       id: sha256.substring(0, 12),
       fileName,
@@ -133,12 +147,16 @@ export async function POST(request: NextRequest) {
       source: 'file-watcher',
     };
 
-    // ── Merge with existing data ──
-    const currentHashes = existing?.processedHashes || [];
-    const currentUploads = ((existing?.uploads as Prisma.JsonArray | null | undefined) ?? []) as Prisma.JsonArray;
-    const nextUploads = [...currentUploads, uploadRecord as Prisma.JsonObject] as Prisma.JsonArray;
+    const currentHashes = existing?.processedHashes ?? [];
+    const currentUploads = ((existing?.uploads as
+      | Prisma.JsonArray
+      | null
+      | undefined) ?? []) as Prisma.JsonArray;
+    const nextUploads = [
+      ...currentUploads,
+      uploadRecord as Prisma.JsonObject,
+    ] as Prisma.JsonArray;
 
-    // ── Upsert YearDataRecord ──
     const result = await prisma.yearDataRecord.upsert({
       where: { year_orgId: { year, orgId } },
       create: {
@@ -155,8 +173,7 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       },
     });
-    
-    // ── Create Audit Log ──
+
     try {
       await prisma.auditLog.create({
         data: {
@@ -167,18 +184,18 @@ export async function POST(request: NextRequest) {
             fileName,
             year,
             sha256,
-            resourceId: result.id
+            resourceId: result.id,
           },
           orgId,
-          // Note: Machine-to-machine auth has no userId
-        }
+        },
       });
     } catch (auditError) {
       console.warn('[/api/data/ingest] Failed to create audit log:', auditError);
-      // Don't fail the request if just the audit log fails
     }
 
-    console.log(`[/api/data/ingest] Ingested ${fileType} data for year ${year} from ${fileName}`);
+    console.log(
+      `[/api/data/ingest] Ingested ${fileType} data for year ${year} from ${fileName}`
+    );
 
     return NextResponse.json({
       success: true,
