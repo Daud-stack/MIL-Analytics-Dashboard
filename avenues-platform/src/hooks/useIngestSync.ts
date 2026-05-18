@@ -1,15 +1,15 @@
 'use client';
 
 /**
- * useIngestSync — Client-side hook that polls /api/ingest for new data
- * and merges it into the Zustand store using the existing addYearData action.
+ * useIngestSync - Client-side hook that polls /api/ingest for new data
+ * and hydrates the Zustand store with the latest database snapshot.
  *
  * Usage: Call this hook once in a top-level layout component.
  *
  * Features:
  * - Polls every 10 seconds (configurable)
  * - Only fetches when there's new data (uses `since` timestamp)
- * - Merges into Zustand store using the existing deep-merge logic
+ * - Replaces matching years locally so database snapshots are not double-counted
  * - Shows a toast/log when new data arrives
  */
 
@@ -21,6 +21,7 @@ const POLL_INTERVAL_MS = 10_000; // 10 seconds
 
 export function useIngestSync() {
   const addYearData = useStore((s) => s.addYearData);
+  const removeYear = useStore((s) => s.removeYear);
   const lastSyncRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -42,12 +43,14 @@ export function useIngestSync() {
       const years = data.years as Record<string, YearData> | undefined;
       if (!years || Object.keys(years).length === 0) return;
 
-      // Merge each year into the Zustand store
+      // The API returns full DB snapshots. Replace each year locally before
+      // adding it so poll cycles do not add the same totals on top of memory.
       for (const [yearStr, yearData] of Object.entries(years)) {
         const year = parseInt(yearStr, 10);
         if (isNaN(year) || !yearData) continue;
 
-        console.log(`[IngestSync] Merging year ${year} from auto-ingest`);
+        console.log(`[IngestSync] Replacing year ${year} from auto-ingest`);
+        removeYear(year);
         addYearData(year, yearData as YearData);
       }
 
@@ -55,9 +58,9 @@ export function useIngestSync() {
       lastSyncRef.current = data.updatedAt || new Date().toISOString();
       console.log('[IngestSync] Sync complete, next check in', POLL_INTERVAL_MS / 1000, 's');
     } catch {
-      // Silently fail — the API might not be running (e.g., on Vercel)
+      // Silently fail - the API might not be running (e.g., on Vercel)
     }
-  }, [addYearData]);
+  }, [addYearData, removeYear]);
 
   useEffect(() => {
     // Initial sync

@@ -2,18 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
-import {
-  mergeClaims,
-  mergeDashboard,
-  mergeGenericDatasets,
-  mergeLocation,
-} from '@/lib/data-merger';
-import type {
-  ClaimsMetrics,
-  DashboardMetrics,
-  GenericDataset,
-  LocationData,
-} from '@/types';
+import type { GenericDataset } from '@/types';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -100,15 +89,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const existingDashboard = existing?.dashboard as
-      | DashboardMetrics
-      | null
-      | undefined;
-    const existingLocation = existing?.location as
-      | LocationData
-      | null
-      | undefined;
-    const existingClaims = existing?.claims as ClaimsMetrics | null | undefined;
     const existingDatasets = existing?.datasets as
       | Record<string, GenericDataset>
       | null
@@ -116,22 +96,13 @@ export async function POST(request: NextRequest) {
 
     const updateData: Record<string, unknown> = {};
     if (fileType === 'Dashboard') {
-      updateData.dashboard = mergeDashboard(
-        existingDashboard ?? null,
-        data as unknown as DashboardMetrics
-      );
+      updateData.dashboard = data;
     } else if (fileType === 'Location') {
-      updateData.location = mergeLocation(
-        existingLocation ?? null,
-        data as unknown as LocationData
-      );
+      updateData.location = data;
     } else if (fileType === 'Claims') {
-      updateData.claims = mergeClaims(
-        existingClaims ?? null,
-        data as unknown as ClaimsMetrics
-      );
+      updateData.claims = data;
     } else {
-      updateData.datasets = mergeGenericDatasets(
+      updateData.datasets = replaceGenericDatasets(
         existingDatasets,
         data as unknown as Record<string, GenericDataset>
       );
@@ -209,4 +180,22 @@ export async function POST(request: NextRequest) {
     console.error(error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'Ingest failed' }, { status: 500 });
   }
+}
+
+function replaceGenericDatasets(
+  existing: Record<string, GenericDataset> | null | undefined,
+  incoming: Record<string, GenericDataset>
+): Record<string, GenericDataset> {
+  const next: Record<string, GenericDataset> = { ...(existing ?? {}) };
+  const incomingSchemaIds = new Set(
+    Object.values(incoming).map((dataset) => dataset.schemaId)
+  );
+
+  for (const [id, dataset] of Object.entries(next)) {
+    if (incomingSchemaIds.has(dataset.schemaId)) {
+      delete next[id];
+    }
+  }
+
+  return { ...next, ...incoming };
 }
