@@ -22,6 +22,13 @@ This is the current setup guide for the watcher scripts in this repo.
 
 The watcher loads `.env.watcher` automatically when it starts.
 
+Current local drop-folder configuration:
+
+```powershell
+WATCH_DIR=C:\Users\daud\AppData\Roaming\Microsoft\Windows\Network Shortcuts\Analytics System Drop Folder
+ARCHIVE_DIR=C:\Users\daud\AppData\Roaming\Microsoft\Windows\Network Shortcuts\Analytics System Drop Folder\Archived
+```
+
 ## Behavior
 
 - `Dashboard`, `Location`, and `Claims` CSV schemas are ingested with their domain-specific parsers.
