@@ -103,6 +103,7 @@ function LoginForm() {
             </label>
             <Link
               href="/forgot-password"
+              prefetch={false}
               className="text-xs text-teal-400 hover:text-teal-300 transition-colors"
             >
               Forgot password?
