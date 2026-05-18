@@ -25,7 +25,7 @@ const initialState = {
 
 type PersistedStoreState = Pick<
   StoreState,
-  'years' | 'currentYear' | 'currentMonth' | 'compareYears' | 'processedFileHashes' | 'activePage' | 'theme' | 'sidebarOpen' | 'filters'
+  'currentYear' | 'currentMonth' | 'compareYears' | 'processedFileHashes' | 'activePage' | 'theme' | 'sidebarOpen' | 'filters'
 >;
 
 const MONTH_COUNT = 12;
@@ -977,7 +977,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'avenues-clinic-store',
-      version: 3,
+      version: 4,
       // Custom merge: default shallow merge uses object spread which destroys Maps
       // ({ ...currentState, ...persistedState }) turns Map into {} because Maps don't spread.
       // We must explicitly preserve the years Map during hydration.
@@ -991,22 +991,22 @@ export const useStore = create<StoreState>()(
             : (currentState as StoreState).years,
         } as StoreState;
       },
-      migrate: (persistedState, version) => {
-        if (!persistedState || version < 3) {
+      migrate: (persistedState) => {
+        if (!persistedState) {
           return {
             ...initialState,
             years: new Map<number, YearData>(),
           } as unknown as StoreState;
         }
 
-        const state = persistedState as Partial<PersistedStoreState> & {
-          years?: Map<number, YearData> | Array<[number, YearData]>;
-        };
+        const state = persistedState as Partial<PersistedStoreState>;
 
         return {
           ...initialState,
           ...state,
-          years: state.years instanceof Map ? state.years : new Map(state.years || []),
+          // v4 intentionally drops persisted year data. The database is the
+          // source of truth, and large year payloads can exceed localStorage.
+          years: new Map<number, YearData>(),
         } as unknown as StoreState;
       },
       storage: {
@@ -1069,9 +1069,8 @@ export const useStore = create<StoreState>()(
           }
         },
       },
-      // Persist essential keys including years data
+      // Persist only lightweight UI preferences. Year data is loaded from DB.
       partialize: (state) => ({
-        years: state.years,
         currentYear: state.currentYear,
         currentMonth: state.currentMonth,
         compareYears: state.compareYears,
