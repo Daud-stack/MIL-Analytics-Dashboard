@@ -1,74 +1,38 @@
-/**
- * Authoritative Tariff Master Price Schedule — Mapped Per Billing Group
- * Source: Revenue assurance June 2026 -v1.xlsx & tariff-template-usd-billing-group.csv
- *
- * Mappings are specific to Billing Group (e.g., "USD RATE", "CIMAS USD", "ALLIANCE USD", "FIRST MUTUAL USD", "FBC HEALTH", "FLIMAS USD")
- */
+import BILLING_GROUP_TARIFFS_DATA from "./billing-group-tariffs.json";
 
 export interface TariffItem {
-  code: string;
+  groupCode: string;
   billingGroup: string;
+  code: string;
   description: string;
-  category: "Bed Fees" | "Maternity" | "ICU/HDU" | "Casualty & A&E" | "Theatre" | "Pharmacy" | "Consumables";
+  baseRateBefore: number;
+  baseRateAfter: number;
+  unitRateBefore: number;
+  unitRateAfter: number;
   approvedTariffUSD: number;
-  effectiveFrom: string;
 }
 
-export const TARIFF_MASTER_LIST: TariffItem[] = [
-  // 1. CIMAS USD Billing Group Tariffs & Exception Schedule
-  { code: "2003", billingGroup: "CIMAS USD", description: "PRIVATE WARD", category: "Bed Fees", approvedTariffUSD: 300.00, effectiveFrom: "2026-01-01" },
-  { code: "2013", billingGroup: "CIMAS USD", description: "SINGLE WARD", category: "Bed Fees", approvedTariffUSD: 260.00, effectiveFrom: "2026-01-01" },
-  { code: "2024", billingGroup: "CIMAS USD", description: "TWO BED WARD", category: "Bed Fees", approvedTariffUSD: 140.00, effectiveFrom: "2026-01-01" },
-  { code: "2034", billingGroup: "CIMAS USD", description: "GENERAL WARD 3-5 BEDS", category: "Bed Fees", approvedTariffUSD: 140.00, effectiveFrom: "2026-01-01" },
-  { code: "2151", billingGroup: "CIMAS USD", description: "INTENSIVE CARE UNIT (ICU) BED", category: "ICU/HDU", approvedTariffUSD: 380.00, effectiveFrom: "2026-01-01" },
-  { code: "2154", billingGroup: "CIMAS USD", description: "HIGH DEPENDENCY UNIT (HDU) BED", category: "ICU/HDU", approvedTariffUSD: 225.00, effectiveFrom: "2026-01-01" },
-  { code: "33333", billingGroup: "CIMAS USD", description: "SURGICAL PACK KIT", category: "Theatre", approvedTariffUSD: 120.00, effectiveFrom: "2026-01-01" },
-
-  // 2. FIRST MUTUAL USD Billing Group Tariffs
-  { code: "04300", billingGroup: "FIRST MUTUAL USD", description: "WARD 1 NORTH BED FEE", category: "Bed Fees", approvedTariffUSD: 210.00, effectiveFrom: "2026-01-01" },
-  { code: "2003", billingGroup: "FIRST MUTUAL USD", description: "PRIVATE WARD", category: "Bed Fees", approvedTariffUSD: 290.00, effectiveFrom: "2026-01-01" },
-
-  // 3. ALLIANCE HEALTH USD Billing Group Tariffs
-  { code: "04495", billingGroup: "ALLIANCE HEALTH", description: "IV CANNULA INSERTION", category: "Consumables", approvedTariffUSD: 25.00, effectiveFrom: "2026-01-01" },
-  { code: "2003", billingGroup: "ALLIANCE HEALTH", description: "PRIVATE WARD", category: "Bed Fees", approvedTariffUSD: 310.00, effectiveFrom: "2026-01-01" },
-
-  // 4. FBC HEALTH Billing Group Tariffs
-  { code: "04315", billingGroup: "FBC HEALTH", description: "ICU NURSING ATTENDANCE", category: "ICU/HDU", approvedTariffUSD: 85.00, effectiveFrom: "2026-01-01" },
-
-  // 5. FLIMAS USD Billing Group Tariffs
-  { code: "99001", billingGroup: "FLIMAS USD", description: "UNPRICED EMERGENCY CONSUMABLE", category: "Consumables", approvedTariffUSD: 45.00, effectiveFrom: "2026-01-01" },
-
-  // 6. BONVIE MEDICAL Billing Group Tariffs
-  { code: "05012", billingGroup: "BONVIE MEDICAL", description: "ULTRASOUND ABDOMEN", category: "Theatre", approvedTariffUSD: 100.00, effectiveFrom: "2026-01-01" },
-
-  // 7. General USD RATE Master Schedule Fallbacks
-  { code: "2003", billingGroup: "USD RATE", description: "PRIVATE WARD", category: "Bed Fees", approvedTariffUSD: 300.00, effectiveFrom: "2026-01-01" },
-  { code: "2013", billingGroup: "USD RATE", description: "SINGLE WARD", category: "Bed Fees", approvedTariffUSD: 260.00, effectiveFrom: "2026-01-01" },
-  { code: "2024", billingGroup: "USD RATE", description: "TWO BED WARD", category: "Bed Fees", approvedTariffUSD: 140.00, effectiveFrom: "2026-01-01" },
-  { code: "2034", billingGroup: "USD RATE", description: "GENERAL WARD 3-5 BEDS", category: "Bed Fees", approvedTariffUSD: 140.00, effectiveFrom: "2026-01-01" },
-  { code: "2044", billingGroup: "USD RATE", description: "GENERAL WARD 6 OR MORE BEDS", category: "Bed Fees", approvedTariffUSD: 120.00, effectiveFrom: "2026-01-01" },
-  { code: "2064", billingGroup: "USD RATE", description: "PAEDIATRIC WARD", category: "Bed Fees", approvedTariffUSD: 160.00, effectiveFrom: "2026-01-01" },
-  { code: "2074", billingGroup: "USD RATE", description: "DAY SURGERY", category: "Bed Fees", approvedTariffUSD: 90.00, effectiveFrom: "2026-01-01" },
-  { code: "2100", billingGroup: "USD RATE", description: "VACCINE ADMINISTRATION", category: "Maternity", approvedTariffUSD: 10.00, effectiveFrom: "2026-01-01" },
-  { code: "2101", billingGroup: "USD RATE", description: "MATERNITY - SINGLE DEL", category: "Maternity", approvedTariffUSD: 170.00, effectiveFrom: "2026-01-01" },
-  { code: "2151", billingGroup: "USD RATE", description: "INTENSIVE CARE UNIT (ICU) BED", category: "ICU/HDU", approvedTariffUSD: 380.00, effectiveFrom: "2026-01-01" },
-  { code: "2154", billingGroup: "USD RATE", description: "HIGH DEPENDENCY UNIT (HDU) BED", category: "ICU/HDU", approvedTariffUSD: 225.00, effectiveFrom: "2026-01-01" },
-  { code: "2201", billingGroup: "USD RATE", description: "A&E ATTEND+CONSULT (7AM-7PM)", category: "Casualty & A&E", approvedTariffUSD: 63.60, effectiveFrom: "2026-01-01" },
-];
+export const TARIFF_MASTER_LIST: TariffItem[] = BILLING_GROUP_TARIFFS_DATA as TariffItem[];
 
 /**
- * Composite key lookup: `${billingGroup}:${code}`
+ * Composite key lookup: `${billingGroup}:${code}` or `${groupCode}:${code}`
  */
 export function getTariffCompositeKey(billingGroup: string, code: string): string {
   return `${billingGroup.toUpperCase().trim()}:${code.toUpperCase().trim()}`;
 }
 
-export const TARIFF_GROUP_MAP = new Map<string, TariffItem>(
-  TARIFF_MASTER_LIST.map((item) => [getTariffCompositeKey(item.billingGroup, item.code), item])
-);
+// Build Map for fast composite lookup
+export const TARIFF_GROUP_MAP = new Map<string, TariffItem>();
+
+TARIFF_MASTER_LIST.forEach((item) => {
+  const keyByName = getTariffCompositeKey(item.billingGroup, item.code);
+  const keyByCode = getTariffCompositeKey(item.groupCode, item.code);
+  TARIFF_GROUP_MAP.set(keyByName, item);
+  TARIFF_GROUP_MAP.set(keyByCode, item);
+});
 
 /**
- * Audit a single billing transaction against Tariff Master rates for a SPECIFIC Billing Group.
+ * Audit a single billing transaction against Tariff Master rates from 20260804RptBillingGroup (1).csv
  */
 export function auditBillingTransaction(
   itemCode: string,

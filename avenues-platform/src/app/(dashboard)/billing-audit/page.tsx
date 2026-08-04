@@ -252,12 +252,26 @@ export default function BillingAuditPage() {
     },
   ];
 
-  // Tariff Master Table Configuration (Mapped Per Billing Group)
+  // Tariff Master Table Configuration (Mapped from 20260804RptBillingGroup (1).csv)
   const tariffColumns: ColumnConfig[] = [
-    { key: "billingGroup", header: "Billing Group", sortable: true },
+    { key: "groupCode", header: "Group Code", sortable: true },
+    { key: "billingGroup", header: "Billing Group Name", sortable: true },
     { key: "code", header: "Tariff Code", sortable: true },
-    { key: "description", header: "Description", sortable: true },
-    { key: "category", header: "Category", sortable: true },
+    { key: "description", header: "Tariff Description", sortable: true },
+    {
+      key: "baseRateBefore",
+      header: "Base Rate Before",
+      sortable: true,
+      align: "right",
+      format: (val) => formatCurrency(Number(val)),
+    },
+    {
+      key: "baseRateAfter",
+      header: "Base Rate After",
+      sortable: true,
+      align: "right",
+      format: (val) => formatCurrency(Number(val)),
+    },
     {
       key: "approvedTariffUSD",
       header: "Approved Tariff (USD)",
@@ -265,16 +279,8 @@ export default function BillingAuditPage() {
       align: "right",
       format: (val) => formatCurrency(Number(val)),
     },
-
-    {
-      key: "cimasExceptionUSD",
-      header: "CIMAS Exception (USD)",
-      sortable: true,
-      align: "right",
-      format: (val) => (val ? formatCurrency(Number(val)) : "Standard"),
-    },
-    { key: "effectiveFrom", header: "Effective From", sortable: true },
   ];
+
 
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
