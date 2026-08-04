@@ -43,7 +43,8 @@ function parseAmount(s: string): number {
 function parseDmyDate(s: string): Date | null {
   const m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
   if (!m) return null;
-  let [, d, mo, y] = m;
+  const [, d, mo, y] = m;
+
   const year = y.length === 2 ? 2000 + parseInt(y, 10) : parseInt(y, 10);
   const date = new Date(Date.UTC(year, parseInt(mo, 10) - 1, parseInt(d, 10)));
   return Number.isNaN(date.getTime()) ? null : date;

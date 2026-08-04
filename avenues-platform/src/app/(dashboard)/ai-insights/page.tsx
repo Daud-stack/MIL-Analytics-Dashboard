@@ -3,20 +3,15 @@
 import React, { useState } from "react";
 import {
   Brain,
-  Zap,
-  TrendingUp,
   AlertTriangle,
   CheckCircle2,
   Sparkles,
-  Download,
   ShieldAlert,
   Search,
-  ArrowRight,
-  Filter,
   DollarSign,
-  Activity,
   Layers,
 } from "lucide-react";
+
 import { StatCard } from "@/components/charts/stat-card";
 import { ChartCard } from "@/components/dashboard/chart-card";
 import { DataTable, ColumnConfig } from "@/components/dashboard/data-table";
