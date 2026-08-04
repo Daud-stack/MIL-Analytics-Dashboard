@@ -117,7 +117,16 @@ const nextConfig: NextConfig = {
   compress: true,
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
-  experimental: {},
+  experimental: {
+    optimizePackageImports: [
+      "lucide-react",
+      "recharts",
+      "date-fns",
+      "clsx",
+      "tailwind-merge",
+    ],
+  },
 };
+
 
 export default nextConfig;

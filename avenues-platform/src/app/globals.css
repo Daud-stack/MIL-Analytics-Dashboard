@@ -78,7 +78,10 @@ h1, h2, h3, h4, .font-heading {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(0, 0, 0, 0.08);
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
+
 
 .dark .glass-panel {
   background: rgba(30, 41, 59, 0.85);
