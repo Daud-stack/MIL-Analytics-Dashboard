@@ -22,7 +22,7 @@ import { DataTable, ColumnConfig } from "@/components/dashboard/data-table";
 import { DataHealthWidget } from "@/components/dashboard/data-health-widget";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 
-// Exact 11-Column Pricing/Billing Audit Record Structure
+// Official 12-Column Pricing/Billing Audit Record Structure (including Originator date)
 export interface PricingAuditRecord {
   episode: string;
   patient: string;
@@ -30,6 +30,7 @@ export interface PricingAuditRecord {
   description: string;
   medicalAid: string;
   txDate: string;
+  originatorDate: string;
   charged: number;
   tariff: number;
   deltaPerUnit: number;
@@ -45,6 +46,7 @@ const PRICING_AUDIT_TRANSACTIONS: PricingAuditRecord[] = [
     description: "4.00 Nights @ USD 390.00 BED 1",
     medicalAid: "CIMAS USD",
     txDate: "2026-05-15",
+    originatorDate: "2026-05-14 14:30",
     charged: 390.0,
     tariff: 300.0,
     deltaPerUnit: 90.0,
@@ -58,6 +60,7 @@ const PRICING_AUDIT_TRANSACTIONS: PricingAuditRecord[] = [
     description: "3.00 Nights @ USD 240.00 WARD 1 NORTH",
     medicalAid: "FIRST MUTUAL USD",
     txDate: "2026-06-02",
+    originatorDate: "2026-06-01 09:15",
     charged: 240.0,
     tariff: 210.0,
     deltaPerUnit: 30.0,
@@ -71,6 +74,7 @@ const PRICING_AUDIT_TRANSACTIONS: PricingAuditRecord[] = [
     description: "1.00 Item IV CANNULA INSERTION",
     medicalAid: "ALLIANCE HEALTH",
     txDate: "2026-06-10",
+    originatorDate: "2026-06-09 22:45",
     charged: 18.5,
     tariff: 25.0,
     deltaPerUnit: -6.5,
@@ -84,6 +88,7 @@ const PRICING_AUDIT_TRANSACTIONS: PricingAuditRecord[] = [
     description: "2.00 Packs SURGICAL PACK KIT",
     medicalAid: "CIMAS USD",
     txDate: "2026-06-14",
+    originatorDate: "2026-06-13 11:20",
     charged: 150.0,
     tariff: 120.0,
     deltaPerUnit: 30.0,
@@ -97,6 +102,7 @@ const PRICING_AUDIT_TRANSACTIONS: PricingAuditRecord[] = [
     description: "5.00 Hours ICU NURSING ATTENDANCE",
     medicalAid: "FBC HEALTH",
     txDate: "2026-06-18",
+    originatorDate: "2026-06-17 16:00",
     charged: 85.0,
     tariff: 85.0,
     deltaPerUnit: 0.0,
@@ -110,6 +116,7 @@ const PRICING_AUDIT_TRANSACTIONS: PricingAuditRecord[] = [
     description: "1.00 Unit UNPRICED EMERGENCY CONSUMABLE",
     medicalAid: "FLIMAS USD",
     txDate: "2026-06-22",
+    originatorDate: "2026-06-21 08:30",
     charged: 0.0,
     tariff: 45.0,
     deltaPerUnit: -45.0,
@@ -123,6 +130,7 @@ const PRICING_AUDIT_TRANSACTIONS: PricingAuditRecord[] = [
     description: "1.00 Procedure ULTRASOUND ABDOMEN",
     medicalAid: "BONVIE MEDICAL",
     txDate: "2026-06-25",
+    originatorDate: "2026-06-24 13:10",
     charged: 120.0,
     tariff: 100.0,
     deltaPerUnit: 20.0,
@@ -136,6 +144,7 @@ const PRICING_AUDIT_TRANSACTIONS: PricingAuditRecord[] = [
     description: "2.00 Nights @ USD 420.00 ICU BED",
     medicalAid: "CIMAS USD",
     txDate: "2026-07-01",
+    originatorDate: "2026-06-30 19:40",
     charged: 420.0,
     tariff: 380.0,
     deltaPerUnit: 40.0,
@@ -180,7 +189,7 @@ export default function BillingAuditPage() {
     };
   }, []);
 
-  // Explicit 11-Column DataTable Configuration
+  // Explicit 12-Column DataTable Configuration (including Originator date)
   const columns: ColumnConfig[] = [
     { key: "episode", header: "Episode", sortable: true },
     { key: "patient", header: "Patient", sortable: true },
@@ -188,6 +197,7 @@ export default function BillingAuditPage() {
     { key: "description", header: "Description", sortable: true },
     { key: "medicalAid", header: "Medical Aid", sortable: true },
     { key: "txDate", header: "Tx date", sortable: true },
+    { key: "originatorDate", header: "Originator date", sortable: true },
     {
       key: "charged",
       header: "Charged",
@@ -251,7 +261,7 @@ export default function BillingAuditPage() {
             Pricing & Billing Audit Specification
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Exact 11-column line item pricing audit against Tariff Master rates (Episode, Patient, Code, Description, Medical Aid, Tx date, Charged, Tariff, Δ / unit, Impact, Type).
+            Official 12-column line item pricing audit (Episode, Patient, Code, Description, Medical Aid, Tx date, Originator date, Charged, Tariff, Δ / unit, Impact, Type).
           </p>
         </div>
 
@@ -326,10 +336,10 @@ export default function BillingAuditPage() {
         ))}
       </div>
 
-      {/* Official 11-Column Pricing & Billing Audit Ledger Table */}
+      {/* Official 12-Column Pricing & Billing Audit Ledger Table */}
       <ChartCard
-        title="Official 11-Column Pricing & Tariff Audit Ledger"
-        subtitle="Itemized audit comparison: Charged vs Master Tariff Rate"
+        title="Official 12-Column Pricing & Tariff Audit Ledger"
+        subtitle="Itemized audit comparison with Originator date: Charged vs Master Tariff Rate"
       >
         <DataTable
           columns={columns}
