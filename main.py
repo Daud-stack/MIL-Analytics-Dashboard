@@ -7,7 +7,10 @@ from modules.analytics import PillarAnalytics
 
 def find(p):
     files = glob.glob(f"data_reservoir/raw/*{p}*.csv")
-    return os.path.basename(files[0]) if files else None
+    if not files:
+        return None
+    # Pick the most recently modified file, not an arbitrary glob-order one
+    return os.path.basename(max(files, key=os.path.getmtime))
 
 
 def refresh():

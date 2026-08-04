@@ -40,11 +40,16 @@ class PillarAnalytics:
                     df['Shift'] = df['Hour'].apply(
                         lambda x: "Night" if pd.notna(x) and (x < 6 or x > 22)
                         else ("Morning" if pd.notna(x) and x < 14 else "Afternoon"))
-                except:
+                except Exception as e:
+                    logger.warning(f"Shift derivation failed, defaulting to 'Unknown': {e}")
                     df['Shift'] = 'Unknown'
 
-            # Save output
-            df.to_csv("data_reservoir/processed/final_intelligence_master.csv", index=False)
+            # Save output alongside the master file it was derived from
+            output_path = os.path.join(
+                os.path.dirname(self.master_path) or "data_reservoir/processed",
+                "final_intelligence_master.csv"
+            )
+            df.to_csv(output_path, index=False)
             
             logger.info(f"Analysis complete: {len(df)} episodes processed")
             return df

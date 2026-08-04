@@ -50,18 +50,26 @@ class HolisticJoiner:
         # Join Payments
         if os.path.exists(pay_path):
             df_pay = pd.read_csv(pay_path, low_memory=False)
-            pay_agg = df_pay.groupby('episode_id').agg({'Amount': 'sum', 'User': 'last'}).rename(
-                columns={'Amount': 'Total_Paid', 'User': 'Last_Cashier'}).reset_index()
-            master = self._safe_merge(master, pay_agg, 
-                                     join_cols=['Total_Paid', 'Last_Cashier'])
+            required = {'episode_id', 'Amount', 'User'}
+            if required <= set(df_pay.columns):
+                pay_agg = df_pay.groupby('episode_id').agg({'Amount': 'sum', 'User': 'last'}).rename(
+                    columns={'Amount': 'Total_Paid', 'User': 'Last_Cashier'}).reset_index()
+                master = self._safe_merge(master, pay_agg,
+                                         join_cols=['Total_Paid', 'Last_Cashier'])
+            else:
+                logger.warning(f"Payments file missing columns {required - set(df_pay.columns)}; skipping payments join")
 
         # Join Duration
         if os.path.exists(dur_path):
             df_dur = pd.read_csv(dur_path, low_memory=False)
-            dur_agg = df_dur.groupby('episode_id').agg({'Duration (mins)': 'mean', 'User': 'first'}).rename(
-                columns={'User': 'Adm_Staff'}).reset_index()
-            master = self._safe_merge(master, dur_agg, 
-                                     join_cols=['Duration (mins)', 'Adm_Staff'])
+            required = {'episode_id', 'Duration (mins)', 'User'}
+            if required <= set(df_dur.columns):
+                dur_agg = df_dur.groupby('episode_id').agg({'Duration (mins)': 'mean', 'User': 'first'}).rename(
+                    columns={'User': 'Adm_Staff'}).reset_index()
+                master = self._safe_merge(master, dur_agg,
+                                         join_cols=['Duration (mins)', 'Adm_Staff'])
+            else:
+                logger.warning(f"Duration file missing columns {required - set(df_dur.columns)}; skipping duration join")
 
         output_path = os.path.join(self.processed_dir, "master_record.csv")
         master.to_csv(output_path, index=False)

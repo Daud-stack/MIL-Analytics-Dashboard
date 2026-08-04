@@ -26,18 +26,28 @@ class IngestionEngine:
 
                 header_idx = 0
                 if keyword:
+                    found = False
                     for i, line in enumerate(lines):
                         if keyword.lower() in line.lower():
                             header_idx = i
+                            found = True
                             break
+                    if not found:
+                        # Falling back to row 0 can silently read report
+                        # preamble as column headers - make that loud.
+                        logger.warning(
+                            "Header keyword '%s' not found in first 25 lines of %s; "
+                            "reading from row 0 (columns may be wrong)",
+                            keyword, file_path
+                        )
 
-                df = pd.read_csv(file_path, skiprows=header_idx, encoding=enc, 
+                df = pd.read_csv(file_path, skiprows=header_idx, encoding=enc,
                                on_bad_lines='skip', low_memory=False)
                 df.columns = [str(c).strip() for c in df.columns]
                 logger.info(f"Loaded {file_path}: {len(df)} rows")
                 return df
             except Exception as e:
-                logger.debug(f"Encoding {enc} failed: {e}")
+                logger.warning(f"Encoding {enc} failed for {file_path}: {e}")
                 continue
         
         logger.error(f"Failed to load {file_path}")
