@@ -136,10 +136,10 @@ export default function BillingAuditPage() {
   const [selectedType, setSelectedType] = useState<string>("All");
   const [activeTab, setActiveTab] = useState<"audit" | "tariffs">("audit");
 
-  // Map raw transactions dynamically against Tariff Master
+  // Map raw transactions dynamically against Tariff Master per Billing Group
   const PRICING_AUDIT_TRANSACTIONS: PricingAuditRecord[] = useMemo(() => {
     return RAW_AUDIT_TRANSACTIONS.map((tx) => {
-      const audit = auditBillingTransaction(tx.code, tx.charged, tx.qty);
+      const audit = auditBillingTransaction(tx.code, tx.charged, tx.qty, tx.medicalAid);
       return {
         episode: tx.episode,
         patient: tx.patient,
@@ -156,6 +156,7 @@ export default function BillingAuditPage() {
       };
     });
   }, []);
+
 
   const filteredRecords = useMemo(() => {
     return PRICING_AUDIT_TRANSACTIONS.filter((row) => {
@@ -251,8 +252,9 @@ export default function BillingAuditPage() {
     },
   ];
 
-  // Tariff Master Table Configuration
+  // Tariff Master Table Configuration (Mapped Per Billing Group)
   const tariffColumns: ColumnConfig[] = [
+    { key: "billingGroup", header: "Billing Group", sortable: true },
     { key: "code", header: "Tariff Code", sortable: true },
     { key: "description", header: "Description", sortable: true },
     { key: "category", header: "Category", sortable: true },
@@ -263,6 +265,7 @@ export default function BillingAuditPage() {
       align: "right",
       format: (val) => formatCurrency(Number(val)),
     },
+
     {
       key: "cimasExceptionUSD",
       header: "CIMAS Exception (USD)",
