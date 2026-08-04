@@ -34,35 +34,48 @@ export async function POST(request: NextRequest) {
     }
 
     // Check file type
-    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+    if (
+      file.type !== 'text/csv' && 
+      !file.name.endsWith('.csv') && 
+      !file.name.endsWith('.xlsx')
+    ) {
       return NextResponse.json(
-        { success: false, error: 'Only CSV files are supported' },
+        { success: false, error: 'Only CSV and XLSX files are supported' },
         { status: 400 }
       );
     }
 
     // Read file content
-    let text = await file.text();
-    // Strip UTF-8 BOM so the first header isn't silently corrupted.
-    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+    let parsedDataResult: any = null;
+    let text = "";
+    let fileType = "UNKNOWN";
+    let year = new Date().getFullYear();
 
-    // Parse CSV
-    const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
-
-    if (!parsed.data || parsed.data.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'CSV file is empty' },
-        { status: 400 }
-      );
+    if (file.name.endsWith('.xlsx')) {
+      const arrayBuffer = await file.arrayBuffer();
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      // For simplicity, grab the first sheet and convert to CSV, then autoParse
+      // We could iterate sheets, but for now we parse the primary sheet
+      const firstSheetName = workbook.SheetNames[0];
+      text = XLSX.utils.sheet_to_csv(workbook.Sheets[firstSheetName]);
+      year = detectYear(text);
+      fileType = 'GENERIC'; 
+      parsedDataResult = autoParseCSV(text);
+    } else {
+      text = await file.text();
+      // Strip UTF-8 BOM
+      if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+      year = detectYear(text);
+      
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      if (!parsed.data || parsed.data.length === 0) {
+        return NextResponse.json({ success: false, error: 'CSV file is empty' }, { status: 400 });
+      }
+      const headers = Object.keys((parsed.data[0] || {}) as Record<string, unknown>);
+      fileType = detectFileType(headers);
+      parsedDataResult = autoParseCSV(text);
     }
-
-    // Detect file type and year
-    const headers = Object.keys((parsed.data[0] || {}) as Record<string, unknown>);
-    const fileType = detectFileType(headers);
-    const year = detectYear(text);
-
-    // Auto-parse based on file type
-    const autoParseResult = autoParseCSV(text);
 
     return NextResponse.json({
       success: true,
@@ -71,11 +84,7 @@ export async function POST(request: NextRequest) {
         fileSize: file.size,
         fileType: fileType.toUpperCase(),
         year,
-        rowCount: parsed.data.length,
-        columnCount: headers.length,
-        headers,
-        sampleData: parsed.data.slice(0, 10),
-        parsedData: autoParseResult,
+        parsedData: parsedDataResult,
       },
     });
   } catch (error) {

@@ -45,23 +45,52 @@ export async function GET(request: NextRequest) {
   }
 }
 
+const ALLOWED_ACTIONS = new Set([
+  'UPLOAD',
+  'LOGIN',
+  'EXPORT',
+  'DATA_WRITE',
+  'DATA_DELETE',
+  'WEBHOOK',
+  'SETTINGS_CHANGE',
+]);
+
 /**
- * POST /api/audit — Create an audit log entry (internal use)
+ * POST /api/audit — Create an audit log entry (internal use).
+ * Requires a session; identity and org are derived server-side so
+ * entries cannot be forged for other users or organizations.
  */
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { orgId: true },
+    });
+
+    if (!user?.orgId) {
+      return NextResponse.json({ error: 'No organization assigned' }, { status: 403 });
+    }
+
     const body = await request.json();
+    const action = typeof body.action === 'string' ? body.action.toUpperCase() : '';
+    if (!ALLOWED_ACTIONS.has(action)) {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
 
     const log = await prisma.auditLog.create({
       data: {
-        action: body.action || 'UNKNOWN',
+        action,
         category: body.category,
         details: body.details,
         metadata: body.metadata,
-        userId: session?.user?.id || body.userId,
-        userName: session?.user?.name || session?.user?.email || body.userName || 'System',
-        orgId: body.orgId,
+        userId: session.user.id,
+        userName: session.user.name || session.user.email || 'Unknown',
+        orgId: user.orgId,
         ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
       },
     });

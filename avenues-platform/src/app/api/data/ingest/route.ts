@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
+import { resolveApiKeyOrg } from '@/lib/security';
+import { extractEpisodeRows, syncEpisodes } from '@/lib/episodes';
 import type { GenericDataset } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -26,16 +28,19 @@ const IngestSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
+    // The org is resolved FROM the key (per-org hashed keys in the api_keys
+    // table; legacy INGEST_API_KEY env secret still honoured during
+    // migration). The caller can no longer choose another tenant.
     const apiKey = request.headers.get('x-api-key');
-    if (!apiKey || apiKey !== process.env.INGEST_API_KEY) {
+    const headerOrgId = request.headers.get('x-org-id');
+    const orgId = await resolveApiKeyOrg(apiKey, headerOrgId);
+    if (!orgId) {
       return NextResponse.json({ error: 'Invalid API key' }, { status: 401 });
     }
-
-    const orgId = request.headers.get('x-org-id');
-    if (!orgId) {
+    if (headerOrgId && headerOrgId !== orgId) {
       return NextResponse.json(
-        { error: 'X-Org-Id header required' },
-        { status: 400 }
+        { error: 'X-Org-Id does not match the org this API key is bound to' },
+        { status: 403 }
       );
     }
 
@@ -162,6 +167,19 @@ export async function POST(request: NextRequest) {
       });
     } catch (auditError) {
       console.warn('[/api/data/ingest] Failed to create audit log:', auditError);
+    }
+
+    // Phase-1 relational model: dual-write Location episodes into the
+    // normalized `episodes` table (idempotent via unique episode key).
+    if (fileType === 'Location') {
+      try {
+        const rawRows = (data as { rawRows?: Record<string, unknown>[] }).rawRows;
+        const rows = extractEpisodeRows(rawRows, orgId, year, sha256);
+        const synced = await syncEpisodes(rows);
+        console.log(`[/api/data/ingest] Episodes synced: +${synced.inserted} rows`);
+      } catch (episodeError) {
+        console.warn('[/api/data/ingest] Episode sync failed (non-fatal):', episodeError);
+      }
     }
 
     console.log(

@@ -14,6 +14,9 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   Cell,
+  PieChart,
+  Pie,
+  Legend,
 } from 'recharts';
 import { StatCard } from '@/components/charts/stat-card';
 import { Button } from '@/components/ui/button';
@@ -115,6 +118,19 @@ export default function TheatrePage() {
     period: label,
     avgMinutes: casesDrill.values[i] > 0 ? minutesDrill.values[i] / casesDrill.values[i] : 0,
   }));
+
+  const demographics = dashData?.theatreDemographics;
+  const hasDemographics = demographics && (demographics.male.some(v => v > 0) || demographics.female.some(v => v > 0) || demographics.children.some(v => v > 0));
+  
+  const demoMaleTotal = demographics?.male.reduce((a, b) => a + b, 0) || 0;
+  const demoFemaleTotal = demographics?.female.reduce((a, b) => a + b, 0) || 0;
+  const demoChildrenTotal = demographics?.children.reduce((a, b) => a + b, 0) || 0;
+  
+  const demographicData = hasDemographics ? [
+    { name: 'Male', value: demoMaleTotal, color: '#0ea5e9' },
+    { name: 'Female', value: demoFemaleTotal, color: '#ec4899' },
+    { name: 'Children', value: demoChildrenTotal, color: '#f59e0b' },
+  ] : [];
 
   const utilizationData = casesDrill.labels.map((label, i) => {
     const util = utilDrill.values[i];
@@ -253,6 +269,60 @@ export default function TheatrePage() {
           </div>
         </div>
       </div>
+
+      {hasDemographics && (
+        <div className="grid gap-6 lg:grid-cols-2 mt-6">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-200 px-5 py-4">
+              <h2 className="text-sm font-semibold text-gray-900">Patient Demographics</h2>
+              <p className="mt-1 text-xs text-gray-500">Theatre utilization by gender and age group</p>
+            </div>
+            <div className="px-5 pb-5">
+              <ResponsiveContainer width="100%" height={320}>
+                <PieChart>
+                  <Pie
+                    data={demographicData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {demographicData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatNumber(Number(value))} />
+                  <Legend verticalAlign="bottom" height={36} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-200 px-5 py-4">
+              <h2 className="text-sm font-semibold text-gray-900">Demographic Insights</h2>
+              <p className="mt-1 text-xs text-gray-500">Summary of the breakdown</p>
+            </div>
+            <div className="p-5 flex flex-col justify-center h-full">
+               <div className="space-y-4">
+                 <div className="flex justify-between items-center border-b pb-2">
+                    <span className="text-sm font-medium text-gray-600">Male Patients</span>
+                    <span className="font-semibold text-gray-900">{formatNumber(demoMaleTotal)}</span>
+                 </div>
+                 <div className="flex justify-between items-center border-b pb-2">
+                    <span className="text-sm font-medium text-gray-600">Female Patients</span>
+                    <span className="font-semibold text-gray-900">{formatNumber(demoFemaleTotal)}</span>
+                 </div>
+                 <div className="flex justify-between items-center border-b pb-2">
+                    <span className="text-sm font-medium text-gray-600">Children</span>
+                    <span className="font-semibold text-gray-900">{formatNumber(demoChildrenTotal)}</span>
+                 </div>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Charts Row 2 */}
       <div className="grid gap-6 lg:grid-cols-2">

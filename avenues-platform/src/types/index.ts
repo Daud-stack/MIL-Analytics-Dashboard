@@ -127,6 +127,40 @@ export interface DashboardMetrics {
   prescriptionsRevRetail: number[];
   dischNotFinalisedValue: number[];
   accountSundries: number[];
+
+  // ── New Specialized Analytics (Aggregated) ──
+  cancellationsByReason?: Record<string, { count: number; value: number }>;
+  cancellationsByLocation?: Record<string, { count: number; value: number }>;
+  cancellationsByMonth?: number[];
+  cancellationValueByMonth?: number[];
+
+  paymentsByType?: Record<string, { count: number; amount: number }>;
+  paymentsByLocation?: Record<string, { count: number; amount: number }>;
+  paymentsByMonth?: number[];
+  paymentAmountByMonth?: number[];
+  
+  dischargesByType?: Record<string, number>;
+  dischargesByWardAgg?: Record<string, number>;
+  
+  slaDaysToStatement?: Record<string, number>;
+  outstandingAmountByMonth?: number[];
+  unreleasedByReason?: Record<string, { count: number; value: number }>;
+
+  theatreDemographics?: {
+    male: number[];
+    female: number[];
+    children: number[];
+  };
+
+  // ── New Finance Controller KPIs ──
+  retailAttendances?: number[];
+  frontshopAttendances?: number[];
+  retailRevenueByFunder?: Record<string, number[]>;
+
+  labTestsConducted?: number[];
+  labPatients?: number[];
+  labAvgRevPerTest?: number[];
+  labRevenueByFunder?: Record<string, number[]>;
 }
 
 /**

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import Papa from 'papaparse';
 import { Button } from '@/components/ui/button';
 import { RoleGuard } from '@/components/auth/role-guard';
 import { useNotifications } from '@/store/notifications';
@@ -46,23 +47,27 @@ async function hashString(text: string): Promise<string> {
  * Returns the year that appears most frequently (majority vote).
  */
 function detectYearFromAdmDates(csvText: string): number {
-  const lines = csvText.split('\n');
-  if (lines.length < 2) return new Date().getFullYear();
+  // Parse with Papa so quoted fields containing commas (patient names,
+  // addresses) don't shift the Adm Date column — a bare split(',') did.
+  const parsed = Papa.parse<Record<string, string>>(csvText, {
+    header: true,
+    skipEmptyLines: true,
+    preview: 200,
+  });
+  const fields = parsed.meta.fields || [];
+  const admDateField = fields.find(f => {
+    const lower = f.trim().toLowerCase();
+    return lower.includes('adm date') || lower.includes('admission date');
+  });
 
-  // Find "Adm Date" column index from header
-  const headerCols = lines[0].split(',').map(h => h.trim().toLowerCase());
-  const admDateIdx = headerCols.findIndex(h => h.includes('adm date') || h.includes('admission date'));
-
-  if (admDateIdx < 0) {
+  if (!admDateField) {
     // Fallback to detectYear if no Adm Date column
     return detectYear(csvText);
   }
 
   const yearCounts: Record<number, number> = {};
-  const limit = Math.min(lines.length, 202); // header + up to 200 rows
-  for (let i = 1; i < limit; i++) {
-    const cols = lines[i].split(',');
-    const dateStr = (cols[admDateIdx] || '').trim();
+  for (const row of parsed.data) {
+    const dateStr = String(row[admDateField] || '').trim();
     const match = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
     if (match) {
       const yr = parseInt(match[3], 10);
@@ -517,7 +522,18 @@ export default function UploadPage() {
               _uploadId: uploadId,
               _fileName: upload.file.name,
             }));
-            dataToStore.location = { ...dataToStore.location, rawRows: stamped.length > 500 ? [] : stamped };
+            // For large files keep at least an Episode-key skeleton: dropping
+            // rawRows entirely disabled episode-level dedup on re-uploads,
+            // which re-triggered additive double counting.
+            const locRows = stamped.length > 500
+              ? stamped.map(row => ({
+                  Episode: String((row as Record<string, unknown>)['Episode'] ?? (row as Record<string, unknown>)['episode'] ?? '').trim(),
+                }))
+              : stamped;
+            if (stamped.length > 500) {
+              console.warn(`[Upload] Location rawRows (${stamped.length}) exceed 500 — storing Episode-key skeleton for dedup; row-level drilldown will be limited.`);
+            }
+            dataToStore.location = { ...dataToStore.location, rawRows: locRows };
           }
           if (dataToStore.loc) {
             dataToStore.loc = dataToStore.location;
@@ -566,7 +582,7 @@ export default function UploadPage() {
             type: 'success',
             title: 'Data Uploaded',
             message: `Successfully processed ${upload.file.name} (${upload.rowCount} rows)`,
-            link: '/dashboard'
+            link: '/hospital'
           });
 
           // Mark file as processed to prevent future duplicates
@@ -617,7 +633,7 @@ export default function UploadPage() {
       setUploads([]);
       setProcessing(false);
 
-      router.push('/dashboard');
+      router.push('/hospital');
     } catch (error) {
       console.error('[Upload] Error processing files:', error);
       setProcessing(false);

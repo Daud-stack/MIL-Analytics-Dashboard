@@ -59,7 +59,9 @@ const sections: SidebarSection[] = [
     key: "primary",
     items: [
       { label: "Upload Data", href: "/upload", icon: Upload },
-      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Hospital", href: "/hospital", icon: LayoutDashboard },
+      { label: "Retail", href: "/retail", icon: Pill },
+      { label: "Lab", href: "/lab", icon: FlaskConical },
       { label: "Drill-Down", href: "/drilldown", icon: Layers },
       { label: "Episode Analytics", href: "/episodes", icon: Activity },
     ],
@@ -82,6 +84,7 @@ const sections: SidebarSection[] = [
     key: "financial",
     items: [
       { label: "Revenue", href: "/revenue", icon: DollarSign },
+      { label: "Revenue Leakage", href: "/revenue/leakage", icon: TrendingUp },
       { label: "Pharmacy", href: "/pharmacy", icon: Pill },
       { label: "Debtors", href: "/debtors", icon: CreditCard },
       { label: "Claims", href: "/claims", icon: FileText },
@@ -146,10 +149,10 @@ function SidebarContent() {
   const isActive = (href: string) => pathname === href;
 
   return (
-    <div className="flex flex-col h-full bg-slate-900 dark:bg-slate-950">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 transition-colors duration-200">
       {/* Logo Area */}
-      <div className="border-b border-slate-700 px-6 py-5">
-        <h1 className="text-base font-bold text-white">
+      <div className="border-b border-slate-200 dark:border-slate-800 px-6 py-5">
+        <h1 className="text-base font-bold text-slate-900 dark:text-white">
           {APP_NAME}
         </h1>
       </div>
@@ -166,8 +169,8 @@ function SidebarContent() {
               aria-controls={`nav-items-${section.key}`}
               className={cn(
                 "flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-widest transition-colors",
-                "text-slate-500 hover:text-slate-300 border-b border-slate-700 pb-2",
-                expandedSections[section.key] && "text-slate-300"
+                "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border-b border-slate-200 dark:border-slate-800 pb-2",
+                expandedSections[section.key] && "text-slate-900 dark:text-slate-200"
               )}
             >
               {section.title}
@@ -199,13 +202,13 @@ function SidebarContent() {
                       className={cn(
                         "flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm font-medium transition-all",
                         active
-                          ? "bg-teal-600/10 text-teal-400 border-l-2 border-l-teal-400"
-                          : "text-slate-400 hover:text-slate-300 hover:bg-slate-800/50"
+                          ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-l-2 border-l-teal-500"
+                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60"
                       )}
                     >
                       <Icon className={cn(
                         "h-4 w-4 shrink-0",
-                        active ? "text-teal-400" : "text-slate-500"
+                        active ? "text-teal-600 dark:text-teal-400" : "text-slate-400 dark:text-slate-500"
                       )} />
                       <span>{item.label}</span>
                     </Link>

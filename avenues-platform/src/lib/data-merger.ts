@@ -1,4 +1,7 @@
+import Papa from 'papaparse';
 import { DashboardMetrics, LocationData, ClaimsMetrics, GenericDataset, ClaimSchemeData, ConversionMetrics } from '../types';
+import { parseLocationCSV, parseClaimsCSV } from './parsers';
+import { mergeDatasets as mergeGenericRowsWithReprofile } from './generic-parser';
 
 /**
  * Server-side implementation of the data merge logic.
@@ -193,24 +196,11 @@ export function mergeGenericDataset(
   existing: GenericDataset,
   incoming: GenericDataset
 ): GenericDataset {
-  const existingFingerprints = new Set(
-    existing.rows.map((row) => genericRowFingerprint(existing, row))
-  );
-
-  const newRows = incoming.rows.filter((row) => {
-    const fingerprint = genericRowFingerprint(incoming, row);
-    return !existingFingerprints.has(fingerprint);
-  });
-
-  const mergedRows = [...existing.rows, ...newRows].slice(0, 2000);
-
-  return {
-    ...incoming,
-    id: existing.id,
-    uploadedAt: incoming.uploadedAt,
-    rowCount: existing.rowCount + newRows.length,
-    rows: mergedRows,
-  };
+  // Delegate to generic-parser's mergeDatasets: same dedup, but it also
+  // RE-PROFILES columns over the merged rows (previously the stats described
+  // only the incoming file) and we keep the existing dataset id.
+  const merged = mergeGenericRowsWithReprofile(existing, incoming);
+  return { ...merged, id: existing.id };
 }
 
 export function mergeGenericDatasets(
@@ -352,6 +342,24 @@ export function mergeLocation(
   const totalIncoming = incomingRows.length || 1;
   const newFraction = newRows.length / totalIncoming;
 
+  // Partial overlap: re-aggregate ONLY the genuinely new rows through the real
+  // parser instead of proportionally scaling every aggregate. Uniform scaling
+  // added phantom counts to months with no new rows and shrank the truly new
+  // months' contributions.
+  if (newRows.length > 0 && newRows.length < incomingRows.length) {
+    try {
+      const csv = Papa.unparse(newRows as Record<string, unknown>[]);
+      const reparsed = parseLocationCSV(csv).location;
+      if (reparsed && reparsed.episodes > 0) {
+        // All reparsed rows are new vs `a`, so the recursive call takes the
+        // newFraction === 1 (plain additive) path.
+        return mergeLocation(a, { ...reparsed, year });
+      }
+    } catch (err) {
+      console.warn('[Merge] Location re-aggregation failed; falling back to proportional scaling', err);
+    }
+  }
+
   const scaleArray = (arr: number[]): number[] => arr.map(v => Math.round(v * newFraction));
   const scaleCountMap = (m: Record<string, number>): Record<string, number> => {
     const result: Record<string, number> = {};
@@ -421,6 +429,7 @@ export function mergeClaims(
 
   let newFraction = 1;
   let mergedClaimRawRows: Record<string, string>[] | undefined = undefined;
+  let dedupNewRows: Record<string, string>[] | null = null;
 
   if (a.rawRows && a.rawRows.length > 0 && b.rawRows && b.rawRows.length > 0) {
     const existingKeys = new Set<string>();
@@ -441,8 +450,22 @@ export function mergeClaims(
 
     newFraction = incomingRows.length > 0 ? newRows.length / incomingRows.length : 0;
     mergedClaimRawRows = [...a.rawRows, ...newRows];
+    dedupNewRows = newRows;
   } else {
     mergedClaimRawRows = b.rawRows ? [...(a.rawRows || []), ...b.rawRows] : a.rawRows;
+  }
+
+  // Partial overlap: re-aggregate ONLY the genuinely new rows through the real
+  // parser instead of proportionally scaling every aggregate (see mergeLocation).
+  if (dedupNewRows && dedupNewRows.length > 0 && dedupNewRows.length < (b.rawRows?.length ?? 0)) {
+    try {
+      const reparsed = parseClaimsCSV(Papa.unparse(dedupNewRows)).claims;
+      if (reparsed && reparsed.totalClaims > 0) {
+        return mergeClaims(a, { ...reparsed, year });
+      }
+    } catch (err) {
+      console.warn('[Merge] Claims re-aggregation failed; falling back to proportional scaling', err);
+    }
   }
 
   const scaleScheme = (s: ClaimSchemeData): ClaimSchemeData => ({

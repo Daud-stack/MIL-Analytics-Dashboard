@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Settings, User, Shield, Bell, Building2, Save, Check } from 'lucide-react';
+import { Settings, User, Shield, Bell, Building2, Save, Check, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function SettingsPage() {
@@ -30,6 +30,7 @@ export default function SettingsPage() {
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'organization', label: 'Organization', icon: Building2 },
+    { id: 'data', label: 'Data Management', icon: Save },
   ];
 
   return (
@@ -212,6 +213,56 @@ export default function SettingsPage() {
                     <p className="text-xs text-gray-500">Webhook URL</p>
                     <p className="text-sm font-mono text-gray-700 mt-0.5">/api/webhooks/pas</p>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'data' && (
+            <div className="space-y-6">
+              <h2 className="text-lg font-semibold text-gray-900">Data Management</h2>
+              <div className="rounded-lg border border-red-200 bg-red-50 p-6 flex flex-col gap-6">
+                <div>
+                  <h3 className="text-md font-semibold text-red-900 mb-2">Clear Local Cache</h3>
+                  <p className="text-sm text-red-700 mb-4">
+                    The dashboard stores data in your browser for faster loading. If you're seeing outdated data, click below to wipe your local cache.
+                  </p>
+                  <Button 
+                    variant="outline"
+                    onClick={() => {
+                      localStorage.removeItem('avenues-clinic-store');
+                      window.location.href = '/hospital';
+                    }} 
+                    className="gap-2 text-red-600 border-red-200 hover:bg-red-100 hover:text-red-700"
+                  >
+                    <Save className="h-4 w-4" />
+                    Wipe Local Cache
+                  </Button>
+                </div>
+                <div className="border-t border-red-200 pt-6">
+                  <h3 className="text-md font-semibold text-red-900 mb-2">Wipe Database (Hard Reset)</h3>
+                  <p className="text-sm text-red-700 mb-4">
+                    This will permanently delete all uploaded data from the server for your organization. Use this if you want to start completely fresh.
+                  </p>
+                  <Button 
+                    variant="destructive"
+                    onClick={async () => {
+                      if (window.confirm('Are you absolutely sure? This will delete all uploaded CSV data from the server.')) {
+                        try {
+                          await fetch('/api/data?year=all', { method: 'DELETE' });
+                          localStorage.removeItem('avenues-clinic-store');
+                          window.location.href = '/hospital';
+                        } catch (e) {
+                          console.error(e);
+                          alert('Failed to wipe database');
+                        }
+                      }
+                    }} 
+                    className="gap-2 bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Wipe Entire Database
+                  </Button>
                 </div>
               </div>
             </div>

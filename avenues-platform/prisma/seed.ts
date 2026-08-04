@@ -1,8 +1,21 @@
 import "dotenv/config";
+import { randomBytes } from "crypto";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+
+/**
+ * Seed passwords are taken from SEED_ADMIN_PASSWORD / SEED_ANALYST_PASSWORD
+ * env vars, or randomly generated and printed ONCE. The previous fixed
+ * password ("admin123") was also documented in the README - a guessable
+ * admin credential if the seed ever ran against a live database.
+ */
+function resolvePassword(envVar: string): { password: string; generated: boolean } {
+  const fromEnv = process.env[envVar];
+  if (fromEnv && fromEnv.length >= 12) return { password: fromEnv, generated: false };
+  return { password: randomBytes(12).toString("base64url"), generated: true };
+}
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -24,8 +37,10 @@ async function main() {
   console.log("Organization created:", org.name);
 
   // Hash passwords
-  const adminHash = await bcrypt.hash("admin123", 12);
-  const analystHash = await bcrypt.hash("admin123", 12);
+  const adminPw = resolvePassword("SEED_ADMIN_PASSWORD");
+  const analystPw = resolvePassword("SEED_ANALYST_PASSWORD");
+  const adminHash = await bcrypt.hash(adminPw.password, 12);
+  const analystHash = await bcrypt.hash(analystPw.password, 12);
 
   // Create admin user
   const admin = await prisma.user.upsert({
@@ -58,9 +73,9 @@ async function main() {
   console.log("Analyst user created:", analyst.email);
 
   console.log("\nSeeding complete!");
-  console.log("\nDemo accounts:");
-  console.log("   Admin:   admin@avenues.clinic   / admin123");
-  console.log("   Analyst: analyst@avenues.clinic  / admin123");
+  console.log("\nDemo accounts (store these now - they are not shown again):");
+  console.log(`   Admin:   admin@avenues.clinic   / ${adminPw.generated ? adminPw.password + "  (generated)" : "<from SEED_ADMIN_PASSWORD>"}`);
+  console.log(`   Analyst: analyst@avenues.clinic  / ${analystPw.generated ? analystPw.password + "  (generated)" : "<from SEED_ANALYST_PASSWORD>"}`);
 }
 
 main()

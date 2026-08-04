@@ -17,11 +17,10 @@ build
 *.db-journal
 prisma/data/
 
-# Environment
+# Environment (all variants, incl. .env.watcher — never bake secrets into images)
 .env
-.env.local
-.env.production
-.env*.local
+.env.*
+!.env.example
 
 # IDE
 .vscode

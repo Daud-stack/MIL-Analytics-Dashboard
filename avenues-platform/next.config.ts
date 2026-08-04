@@ -21,18 +21,29 @@ const nextConfig: NextConfig = {
       process.env.ALLOW_SELF_REGISTRATION === "true" ? "true" : "false",
   },
 
+  // Let Turbopack infer the workspace root. This is correct now that the
+  // vestigial package-lock.json in the parent folder has been removed —
+  // explicit root pinning proved unreliable on Windows (the compiled config's
+  // __dirname pointed outside the app and broke Tailwind resolution).
   turbopack: {},
 
   webpack: (config, { dev }) => {
     if (dev) {
+      // webpack's schema requires `ignored` to be all-strings (globs) or a
+      // single RegExp — Next's default is a RegExp, so mixing it into an
+      // array fails validation. Keep only string entries and re-add
+      // node_modules explicitly.
+      const existing = config.watchOptions?.ignored;
+      const existingStrings = Array.isArray(existing)
+        ? existing.filter((e: unknown): e is string => typeof e === 'string')
+        : typeof existing === 'string'
+          ? [existing]
+          : [];
       config.watchOptions = {
         ...config.watchOptions,
         ignored: [
-          ...(Array.isArray(config.watchOptions?.ignored)
-            ? config.watchOptions.ignored
-            : config.watchOptions?.ignored
-              ? [config.watchOptions.ignored]
-              : []),
+          ...existingStrings,
+          '**/node_modules/**',
           '**/data/**',
           '**/uploads/**',
           '**/archived/**',

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useFilterStore } from "@/store/filter";
 import { useSidebarStore } from "@/store/sidebar";
 import { useSession, signOut } from "next-auth/react";
+import { useTheme } from "@/components/theme-provider";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -38,7 +39,8 @@ export function Header() {
     useFilterStore();
   const { toggleSidebar } = useSidebarStore();
   const { data: session } = useSession();
-  const [isDark, setIsDark] = React.useState(false);
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === "dark";
 
   const userName = session?.user?.name || session?.user?.email || "User";
   const userInitials = userName
@@ -50,15 +52,6 @@ export function Header() {
 
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
-
-  const handleThemeToggle = () => {
-    setIsDark(!isDark);
-    if (isDark) {
-      document.documentElement.classList.remove("dark");
-    } else {
-      document.documentElement.classList.add("dark");
-    }
-  };
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
@@ -130,8 +123,9 @@ export function Header() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={handleThemeToggle}
-            className="h-9 w-9 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+            onClick={toggleTheme}
+            className="h-9 w-9 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
           >
             {isDark ? (
               <Sun className="h-4 w-4" />

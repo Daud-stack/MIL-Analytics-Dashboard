@@ -1,5 +1,3 @@
-'use client';
-
 /**
  * Generic CSV Parser with Auto Column Detection & Profiling
  *
@@ -25,8 +23,27 @@ function isDateString(value: string): boolean {
   return DATE_PATTERNS.some(p => p.test(value.trim()));
 }
 
+function cleanNumericString(value: string): string {
+  let s = value.trim();
+  let negative = false;
+  // Accounting-style negatives: "(1,234.56)" → -1234.56
+  if (/^\(.*\)$/.test(s)) {
+    negative = true;
+    s = s.slice(1, -1);
+  }
+  s = s
+    .replace(/,/g, '')
+    .replace(/[$£€\s]/g, '')
+    .replace(/^[A-Za-z]+\$?/, '');
+  // Trailing units/currency codes — but keep scientific notation intact
+  if (!/[eE][+-]?[0-9]+$/.test(s)) {
+    s = s.replace(/[A-Za-z%]+$/, '');
+  }
+  return negative && s ? `-${s}` : s;
+}
+
 function isNumericString(value: string): boolean {
-  const cleaned = value.trim().replace(/^[$£€]/, '').replace(/,/g, '').replace(/\s/g, '');
+  const cleaned = cleanNumericString(value);
   if (cleaned === '' || cleaned === '-') return false;
   return !isNaN(parseFloat(cleaned)) && isFinite(parseFloat(cleaned));
 }
@@ -71,7 +88,7 @@ function detectColumnType(values: string[]): ColumnType {
 
 function parseNumeric(value: unknown): number | null {
   if (value == null) return null;
-  const s = String(value).trim().replace(/^[$£€]/, '').replace(/,/g, '').replace(/\s/g, '');
+  const s = cleanNumericString(String(value));
   if (s === '' || s === '-') return null;
   const num = parseFloat(s);
   return isNaN(num) ? null : num;
@@ -250,6 +267,10 @@ export function mergeDatasets(existing: GenericDataset, incoming: GenericDataset
   });
 
   const mergedRows = [...existing.rows, ...newRows].slice(0, 2000);
+  const droppedRows = existing.rows.length + newRows.length - mergedRows.length;
+  if (droppedRows > 0) {
+    console.warn(`[GenericMerge] Row cap hit: keeping 2000 of ${existing.rows.length + newRows.length} rows (${droppedRows} dropped from in-browser sample; rowCount still tracks the true total).`);
+  }
 
   // Re-profile columns with merged data
   const allValues = mergedRows;

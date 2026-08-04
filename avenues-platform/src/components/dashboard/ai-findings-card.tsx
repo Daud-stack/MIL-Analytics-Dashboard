@@ -7,14 +7,32 @@ import { useDashboard } from '@/store';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
-export function AIFindingsCard() {
-  const dashData = useDashboard();
-  
-  const findings = useMemo(() => {
-    return generateAIInsights(dashData);
-  }, [dashData]);
+interface AIFindingsCardProps {
+  /** Static findings to display instead of the auto-generated store insights. */
+  findings?: string[];
+  /** Visual tone for static findings. */
+  type?: 'positive' | 'neutral' | 'anomaly';
+}
 
-  if (!dashData || findings.length === 0) return null;
+export function AIFindingsCard({ findings: staticFindings, type = 'neutral' }: AIFindingsCardProps) {
+  const dashData = useDashboard();
+
+  const findings = useMemo<IntelligenceFinding[]>(() => {
+    if (staticFindings && staticFindings.length > 0) {
+      return staticFindings.map((text, i) => ({
+        id: `static-${i}`,
+        type: type === 'neutral' ? 'trend' : type,
+        severity: 'low',
+        title: text.split('.')[0],
+        description: text,
+        metric: 'Insight',
+        value: '',
+      }));
+    }
+    return generateAIInsights(dashData);
+  }, [dashData, staticFindings, type]);
+
+  if ((!dashData && !staticFindings) || findings.length === 0) return null;
 
   return (
     <div className="rounded-xl border border-teal-100 bg-gradient-to-br from-white to-teal-50/30 shadow-sm overflow-hidden">

@@ -1,13 +1,12 @@
-'use client';
-
 /**
  * CSV parsing utilities for healthcare data
+ * (pure logic - safe to import from both client components and API routes)
  * Handles Dashboard, Location, and Claims data formats
  */
 
 import Papa from 'papaparse';
 import { DashboardMetrics, LocationData, ClaimsMetrics, YearData, ConversionMetrics, ConversionRecord } from '@/types';
-import { DEFAULT_FACILITY_NAME } from '@/lib/app-config';
+import { DEFAULT_FACILITY_NAME, THEATRE_AVAILABLE_MINUTES_PER_MONTH } from '@/lib/app-config';
 
 // Excel-exported CSVs commonly include a UTF-8 BOM (\uFEFF) at the start of
 // the file. If we don't strip it, the first column header becomes
@@ -202,13 +201,26 @@ function parseNumber(value: unknown): number {
   let str = String(value).trim();
   if (!str) return 0;
   // Strip quotes
-  str = str.replace(/^["']|["']$/g, '');
+  str = str.replace(/^["']|["']$/g, '').trim();
+  // Accounting-style negatives: "(1,234.56)" → -1234.56
+  let negative = false;
+  if (/^\(.*\)$/.test(str)) {
+    negative = true;
+    str = str.slice(1, -1);
+  }
   // Strip thousand-separator commas (e.g., "1,234,567.89" → "1234567.89")
   str = str.replace(/,/g, '');
-  // Strip currency symbols and spaces
-  str = str.replace(/[$£€\s]/g, '');
+  // Strip currency symbols, alphabetic currency codes (US$, ZWL, ZiG, R, USD...)
+  // and spaces — previously "US$1,200" parsed as 0, silently dropping revenue.
+  str = str.replace(/[$£€\s]/g, '').replace(/^[A-Za-z]+\$?/, '');
+  // Trailing units/currency codes ("1200ZWL", "12.5%") — but keep scientific notation intact
+  if (!/[eE][+-]?[0-9]+$/.test(str)) {
+    str = str.replace(/[A-Za-z%]+$/, '');
+  }
+  if (str === '' || str === '-' || str === '.') return 0;
   const num = parseFloat(str);
-  return isNaN(num) ? 0 : num;
+  if (isNaN(num)) return 0;
+  return negative ? -num : num;
 }
 
 /**
@@ -249,8 +261,10 @@ function splitCSVLine(line: string, delimiter?: string): string[] {
 /** Helper: create zeroed 12-month array */
 function z12(): number[] { return new Array(12).fill(0); }
 
-/** Helper: create empty DashboardMetrics shell */
-function emptyDashMetrics(year: number): DashboardMetrics {
+/**
+ * Helper to initialize an empty DashboardMetrics object
+ */
+export function emptyDashMetrics(year: number): DashboardMetrics {
   return {
     year,
     totalRevenue: 0,
@@ -277,6 +291,40 @@ function emptyDashMetrics(year: number): DashboardMetrics {
     prescriptionsHospital: z12(), prescriptionsRetail: z12(),
     prescriptionsRevHospital: z12(), prescriptionsRevRetail: z12(),
     dischNotFinalisedValue: z12(), accountSundries: z12(),
+    
+    // Initialize aggregated specialized analytics
+    cancellationsByReason: {},
+    cancellationsByLocation: {},
+    cancellationsByMonth: z12(),
+    cancellationValueByMonth: z12(),
+
+    paymentsByType: {},
+    paymentsByLocation: {},
+    paymentsByMonth: z12(),
+    paymentAmountByMonth: z12(),
+    
+    dischargesByType: {},
+    dischargesByWardAgg: {},
+    
+    slaDaysToStatement: {},
+    outstandingAmountByMonth: z12(),
+    unreleasedByReason: {},
+
+    theatreDemographics: {
+      male: z12(),
+      female: z12(),
+      children: z12()
+    },
+    
+    // New Finance Controller KPIs
+    retailAttendances: z12(),
+    frontshopAttendances: z12(),
+    retailRevenueByFunder: {},
+    
+    labTestsConducted: z12(),
+    labPatients: z12(),
+    labAvgRevPerTest: z12(),
+    labRevenueByFunder: {},
   };
 }
 
@@ -606,7 +654,7 @@ export function parseDashboardCSV(csvText: string): YearData {
   metrics.theatreCases = colZ('Theatre Cases-THEATRE');
   metrics.theatreMinutes = colZ('Theatre Utilization-THEATRE');
   metrics.theatreUtil = metrics.theatreMinutes.map(v => {
-    const avail = 13640;
+    const avail = THEATRE_AVAILABLE_MINUTES_PER_MONTH;
     return avail > 0 ? (v / avail) * 100 : 0;
   });
 
@@ -757,6 +805,15 @@ export function parseDashboardCSV(csvText: string): YearData {
     });
   }
 
+  // ── Retail / Pharmacy ──
+  metrics.retailAttendances = col('Retail Attendances-Medicines') || col('Medicines attendances') || z12();
+  metrics.frontshopAttendances = col('Retail Attendances-Frontshop') || col('Frontshop attendances') || z12();
+
+  // ── Laboratory ──
+  metrics.labTestsConducted = col('Number of test conducted') || z12();
+  metrics.labPatients = metrics.admLab || col('Number of patients') || z12();
+  metrics.labAvgRevPerTest = col('Average revue per test') || z12();
+
   // GP averages (average across all locations)
   const ethVals = Object.values(metrics.gpEthicalPerLoc);
   if (ethVals.length) {
@@ -862,10 +919,12 @@ export function parseLocationCSV(csvText: string): YearData {
     for (const h of headers) {
       if (h.trim().toLowerCase() === 'total') return h;
     }
-    // Fallback: find last column containing "total" (revenue is typically the last "Total" column)
+    // Fallback: find last column containing "total" (revenue is typically the last "Total" column),
+    // but skip non-revenue totals like "Total Days"
     let lastMatch: string | null = null;
     for (const h of headers) {
-      if (h.trim().toLowerCase() === 'total') lastMatch = h;
+      const lower = h.trim().toLowerCase();
+      if (lower.includes('total') && !lower.includes('day')) lastMatch = h;
     }
     return lastMatch;
   })();
@@ -1385,12 +1444,15 @@ export function parseClaimsCSV(csvText: string): YearData {
     const status = rawStatus.toLowerCase();
     const claimValue = colAmount ? parseNumber(row[colAmount]) : 0;
     const amountPaid = colAmountPaid ? parseNumber(row[colAmountPaid]) : 0;
+    // Fall back to the paid amount when the file has no Claim Value column —
+    // previously `amount` was computed but never used, so paid-only files
+    // reported zero claimed value everywhere.
     const amount = claimValue || amountPaid;
     const scheme = colScheme ? (row[colScheme] || '').trim() : '';
     const doctor = colDoctor ? (row[colDoctor] || '').trim() : '';
     const reason = colReason ? (row[colReason] || '').trim() : '';
 
-    metrics.totalClaimed += claimValue;
+    metrics.totalClaimed += amount;
 
     // Status tracking — handle both full words and EDI single-letter codes
     // Common EDI codes: R=Received, A=Accepted/Approved, P=Pending, X/D=Rejected/Declined
@@ -1415,7 +1477,7 @@ export function parseClaimsCSV(csvText: string): YearData {
     const claimMonth = parseDateMonth(dateStr);
     if (claimMonth >= 0) {
       metrics.totalClaims_monthly[claimMonth]++;
-      metrics.claimAmounts_monthly[claimMonth] += claimValue;
+      metrics.claimAmounts_monthly[claimMonth] += amount;
       if (status.includes('approved') || status.includes('accepted') || status.includes('paid') || s === 'A') metrics.approvedClaims_monthly[claimMonth]++;
       if (status.includes('rejected') || status.includes('declined') || s === 'X' || s === 'D') metrics.rejectedClaims_monthly[claimMonth]++;
       if (status.includes('pending') || status.includes('processing') || s === 'P') metrics.pendingClaims_monthly[claimMonth]++;
@@ -1427,7 +1489,7 @@ export function parseClaimsCSV(csvText: string): YearData {
       if (!metrics.byScheme[scheme]) {
         metrics.byScheme[scheme] = { totalClaimed: 0, submitted: 0, received: 0, rejected: 0, approved: 0, pending: 0 };
       }
-      metrics.byScheme[scheme].totalClaimed += claimValue;
+      metrics.byScheme[scheme].totalClaimed += amount;
       if (status.includes('approved') || status.includes('accepted') || status.includes('paid') || s === 'A') metrics.byScheme[scheme].approved++;
       else if (status.includes('rejected') || status.includes('declined') || s === 'X' || s === 'D') metrics.byScheme[scheme].rejected++;
       else if (status.includes('pending') || status.includes('processing') || s === 'P') metrics.byScheme[scheme].pending++;
@@ -1441,7 +1503,7 @@ export function parseClaimsCSV(csvText: string): YearData {
         metrics.byDoctor[doctor] = { claims: 0, approved: 0, amount: 0 };
       }
       metrics.byDoctor[doctor].claims++;
-      metrics.byDoctor[doctor].amount += claimValue;
+      metrics.byDoctor[doctor].amount += amount;
       if (status.includes('approved') || status.includes('accepted') || status.includes('paid') || s === 'A') metrics.byDoctor[doctor].approved++;
     }
   }
@@ -1462,6 +1524,8 @@ export function parseClaimsCSV(csvText: string): YearData {
   };
 }
 
+import { parseCancellationsCSV, parsePaymentsCSV, parseReleasesCSV, parseDischargesCSV, parseRevenueCentersCSV } from './specialized-parsers';
+
 /**
  * Auto-detect and parse CSV file
  */
@@ -1472,6 +1536,37 @@ export function autoParseCSV(csvText: string): YearData {
   const firstRow = (result.data[0] || {}) as Record<string, unknown>;
   const fileType = detectFileType(headers, firstRow);
 
+  const year = detectYear(csvText);
+
+  // Check for specialized formats first based on specific headers
+  const headerStr = headers.map(h => h.toLowerCase()).join(' ');
+  
+  let specializedData: Partial<DashboardMetrics> | null = null;
+  if (headerStr.includes('cancellation reason') && headerStr.includes('cancellation amount')) {
+    specializedData = parseCancellationsCSV(csvText, year);
+  } else if (headerStr.includes('payment type') && (headerStr.includes('payment / deposit amount') || headerStr.includes('payment amount'))) {
+    specializedData = parsePaymentsCSV(csvText, year);
+  } else if (headerStr.includes('days post discharge') && headerStr.includes('not released reason')) {
+    specializedData = parseReleasesCSV(csvText, year);
+  } else if (headerStr.includes('discharge type') && headerStr.includes('ward') && !headerStr.includes('payment')) {
+    specializedData = parseDischargesCSV(csvText, year);
+  } else if (headerStr.includes('description') && headerStr.includes('income') && headerStr.includes('hospital')) {
+    specializedData = parseRevenueCentersCSV(csvText, year);
+  }
+
+  // If a specialized format was detected, return a YearData with DashboardMetrics containing the specialized data
+  if (specializedData) {
+    const dash = { ...emptyDashMetrics(year), ...specializedData };
+    return {
+      year,
+      dash: dash, dashboard: dash,
+      loc: null, location: null,
+      apac: null, claims: null,
+      uploads: [],
+      datasets: {}
+    };
+  }
+
   switch (fileType) {
     case 'dashboard':
       return parseDashboardCSV(csvText);
@@ -1481,7 +1576,7 @@ export function autoParseCSV(csvText: string): YearData {
       return parseClaimsCSV(csvText);
     default:
       return {
-        year: detectYear(csvText),
+        year,
         dash: null,
         dashboard: null,
         loc: null,
@@ -1500,6 +1595,10 @@ export function autoParseCSV(csvText: string): YearData {
 export function exportToCSV(data: Record<string, unknown>[], filename: string): string {
   if (data.length === 0) return '';
 
+  // Prefix values starting with = + - @ with a quote so spreadsheet apps
+  // treat them as text, not formulas (CSV injection).
+  const defang = (str: string): string => (/^[=+\-@\t\r]/.test(str) ? `'${str}` : str);
+
   const headers = Object.keys(data[0]);
   const csvLines = [
     headers.join(','),
@@ -1508,7 +1607,7 @@ export function exportToCSV(data: Record<string, unknown>[], filename: string): 
         .map((header) => {
           const value = row[header];
           if (value === null || value === undefined) return '';
-          const str = String(value);
+          const str = typeof value === 'number' ? String(value) : defang(String(value));
           if (str.includes(',') || str.includes('"') || str.includes('\n')) {
             return `"${str.replace(/"/g, '""')}"`;
           }

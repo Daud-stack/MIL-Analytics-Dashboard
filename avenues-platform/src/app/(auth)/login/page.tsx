@@ -39,11 +39,11 @@ function LoginForm() {
         setError("Invalid email or password. Please try again.");
       } else if (result?.ok) {
         // Validate callback URL to prevent open redirect attacks
-        const rawCallback = searchParams.get("callbackUrl") || "/dashboard";
+        const rawCallback = searchParams.get("callbackUrl") || "/hospital";
         const callbackUrl = rawCallback.startsWith("/") && !rawCallback.startsWith("//")
           ? rawCallback
-          : "/dashboard";
-        router.push(callbackUrl);
+          : "/hospital";
+        window.location.href = callbackUrl;
       }
     } catch (err) {
       setError("An error occurred. Please try again.");
@@ -75,7 +75,7 @@ function LoginForm() {
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-5" suppressHydrationWarning>
         {/* Email Field */}
         <div className="space-y-2">
           <label htmlFor="email" className="block text-sm font-medium text-slate-200">
@@ -90,6 +90,7 @@ function LoginForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              suppressHydrationWarning
               className="w-full bg-slate-700/50 border border-slate-600 rounded-lg py-2.5 pl-10 pr-4 text-white placeholder-slate-500 transition-all duration-200 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
             />
           </div>
@@ -118,6 +119,7 @@ function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              suppressHydrationWarning
               className="w-full bg-slate-700/50 border border-slate-600 rounded-lg py-2.5 pl-10 pr-4 text-white placeholder-slate-500 transition-all duration-200 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
             />
           </div>
@@ -127,6 +129,7 @@ function LoginForm() {
         <button
           type="submit"
           disabled={isLoading}
+          suppressHydrationWarning
           className="w-full bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-400 disabled:from-slate-600 disabled:to-slate-500 text-white font-semibold py-2.5 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-teal-500/25 disabled:shadow-none"
         >
           {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -135,7 +138,7 @@ function LoginForm() {
       </form>
 
       {/* Footer */}
-      <div className="mt-6 pt-6 border-t border-slate-700">
+      <div className="mt-6 pt-6 border-t border-slate-700/60 space-y-3">
         <p className="text-center text-sm text-slate-400">
           Don&apos;t have an account?{" "}
           <Link
@@ -144,6 +147,13 @@ function LoginForm() {
           >
             Create one
           </Link>
+        </p>
+
+        <p className="text-center text-xs text-slate-500 font-medium tracking-wide pt-1">
+          Created & Engineered by{" "}
+          <span className="text-teal-400 font-semibold hover:text-teal-300 transition-colors">
+            Daud Sibanda
+          </span>
         </p>
       </div>
     </div>

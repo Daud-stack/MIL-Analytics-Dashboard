@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import { enforceDbRateLimit } from "@/lib/security";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
@@ -29,6 +30,17 @@ export const authConfig: NextAuthConfig = {
 
         const email = parsedCredentials.data.email.toLowerCase();
         const password = parsedCredentials.data.password;
+
+        // Throttle credential guessing per email - durable (DB-backed), so
+        // it holds across serverless instances.
+        const rate = await enforceDbRateLimit(`login:${email}`, {
+          maxRequests: 10,
+          windowMs: 15 * 60 * 1000,
+        });
+        if (!rate.allowed) {
+          console.warn(`[Auth] Login rate limit hit for ${email}`);
+          return null;
+        }
 
         const user = await prisma.user.findUnique({
           where: { email },

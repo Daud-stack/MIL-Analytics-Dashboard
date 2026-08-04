@@ -10,7 +10,7 @@ const POLL_INTERVAL_MS = 30000; // Poll DB every 30s for changes from other user
 const MIGRATION_KEY = 'avenues_db_migrated'; // localStorage flag
 
 /**
- * useDbSync — Hybrid sync between Zustand (localStorage) and Vercel Postgres.
+ * useDbSync — Hybrid sync between Zustand (localStorage) and Postgres.
  *
  * On login:
  *   1. If localStorage has data but DB doesn't → migrate localStorage → DB
@@ -19,20 +19,30 @@ const MIGRATION_KEY = 'avenues_db_migrated'; // localStorage flag
  *
  * On data change (upload/merge):
  *   1. Zustand updates immediately (fast UI)
- *   2. Debounced write pushes changed years to DB
+ *   2. Debounced write pushes changed years to DB with an optimistic-lock
+ *      precondition (ifUnmodifiedSince) so two users can't silently clobber
+ *      each other — on conflict we re-load from the DB instead of overwriting.
  *
  * Polling:
- *   Every 30s, fetch DB data and merge any new data from other users
+ *   Every 30s, fetch DB data and replace local state — skipped while local
+ *   changes are still waiting to be flushed, so they aren't clobbered.
  */
 export function useDbSync() {
   const { data: session, status } = useSession();
   const isAuthenticated = status === 'authenticated' && !!session?.user;
 
-  const store = useStore();
+  // Subscribe ONLY to `years` — subscribing to the whole store re-rendered the
+  // dashboard layout on every unrelated store change.
+  const years = useStore((state) => state.years);
+
   const prevYearsRef = useRef<string>('');
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSyncing = useRef(false);
   const lastPoll = useRef<number>(0);
+  /** Last known DB updatedAt per year — the optimistic-lock token. */
+  const dbUpdatedAt = useRef<Record<number, string>>({});
+  /** Pending (debounced) local changes awaiting a flush. */
+  const pendingFlush = useRef<{ snapshot: string; years: Map<number, YearData> } | null>(null);
 
   // ─── Fetch all years from DB ─────────────────────────────
   const fetchFromDb = useCallback(async (): Promise<Map<number, YearData> | null> => {
@@ -46,6 +56,9 @@ export function useDbSync() {
       for (const [yearStr, data] of Object.entries(json.data)) {
         const year = parseInt(yearStr, 10);
         const d = data as Record<string, unknown>;
+        if (typeof d.updatedAt === 'string') {
+          dbUpdatedAt.current[year] = d.updatedAt;
+        }
         map.set(year, {
           year,
           dash: d.dashboard as YearData['dash'],
@@ -56,6 +69,7 @@ export function useDbSync() {
           claims: d.claims as YearData['claims'],
           uploads: (d.uploads || []) as YearData['uploads'],
           datasets: (d.datasets || {}) as YearData['datasets'],
+          processedHashes: (d.processedHashes || []) as YearData['processedHashes'],
         });
       }
       return map;
@@ -65,8 +79,21 @@ export function useDbSync() {
     }
   }, []);
 
-  // ─── Push a single year to DB ────────────────────────────
-  const pushYearToDb = useCallback(async (year: number, data: YearData) => {
+  /** Replace the local store with a DB snapshot and reset the fingerprint. */
+  const replaceStoreWithDb = useCallback((dbData: Map<number, YearData>) => {
+    const state = useStore.getState();
+    Array.from(state.years.keys()).forEach((y) => state.removeYear(y));
+    dbData.forEach((yearData, year) => {
+      useStore.getState().addYearData(year, yearData);
+    });
+    // Read FRESH state for the fingerprint — reading a stale render snapshot
+    // here caused a spurious full push-back to the DB after every load.
+    prevYearsRef.current = serializeYearsForComparison(useStore.getState().years);
+  }, []);
+
+  // ─── Push a single year to DB (optimistic lock) ──────────
+  // Returns 'ok' | 'conflict' | 'error'
+  const pushYearToDb = useCallback(async (year: number, data: YearData): Promise<'ok' | 'conflict' | 'error'> => {
     try {
       const res = await fetch('/api/data', {
         method: 'POST',
@@ -82,52 +109,53 @@ export function useDbSync() {
           // re-upload of the same file via /api/data/ingest no longer
           // short-circuits and the merger double-counts.
           processedHashes: data.processedHashes || [],
+          // Optimistic lock: refuse the write if someone else (another user,
+          // the file watcher) updated this year since we last read it.
+          ifUnmodifiedSince: dbUpdatedAt.current[year] || null,
         }),
       });
+      if (res.status === 409) {
+        console.warn('[DbSync] Conflict on year', year, '- DB changed since last read; reloading');
+        return 'conflict';
+      }
       if (!res.ok) {
         console.error('[DbSync] Push failed for year', year, res.status);
+        return 'error';
       }
+      const json = await res.json();
+      if (typeof json.updatedAt === 'string') {
+        dbUpdatedAt.current[year] = json.updatedAt;
+      }
+      return 'ok';
     } catch (err) {
       console.error('[DbSync] Push error for year', year, err);
+      return 'error';
     }
   }, []);
 
-  // ─── Migration: localStorage → DB (one-time) ─────────────
-  const migrateLocalData = useCallback(async () => {
-    if (typeof window === 'undefined') return;
+  /** Flush the pending local changes to the DB. */
+  const flushPending = useCallback(async () => {
+    const pending = pendingFlush.current;
+    if (!pending) return;
+    pendingFlush.current = null;
 
-    // Check if already migrated
-    if (localStorage.getItem(MIGRATION_KEY)) return;
+    isSyncing.current = true;
+    prevYearsRef.current = pending.snapshot;
 
-    const localYears = store.years;
-    if (localYears.size === 0) {
-      localStorage.setItem(MIGRATION_KEY, new Date().toISOString());
-      return;
+    const results = await Promise.all(
+      Array.from(pending.years.entries()).map(([year, data]) => pushYearToDb(year, data))
+    );
+    console.log('[DbSync] Pushed', results.length, 'year(s) to DB');
+
+    if (results.includes('conflict')) {
+      // Someone else wrote first: reload the DB state (their write + ours were
+      // both merges of the same base, so the safest resolution is re-reading
+      // and letting the user's next change re-merge on the fresh base).
+      const dbData = await fetchFromDb();
+      if (dbData && dbData.size > 0) replaceStoreWithDb(dbData);
     }
-
-    console.log('[DbSync] Migrating', localYears.size, 'year(s) from localStorage to DB...');
-
-    try {
-      const yearsObj: Record<string, YearData> = {};
-      localYears.forEach((data, year) => {
-        yearsObj[year.toString()] = data;
-      });
-
-      const res = await fetch('/api/data/migrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ years: yearsObj }),
-      });
-
-      if (res.ok) {
-        const result = await res.json();
-        console.log('[DbSync] Migration result:', result.message);
-        localStorage.setItem(MIGRATION_KEY, new Date().toISOString());
-      }
-    } catch (err) {
-      console.error('[DbSync] Migration error:', err);
-    }
-  }, [store.years]);
+    isSyncing.current = false;
+  }, [pushYearToDb, fetchFromDb, replaceStoreWithDb]);
 
   // ─── Initial sync on login ────────────────────────────────
   useEffect(() => {
@@ -138,25 +166,53 @@ export function useDbSync() {
     const initialSync = async () => {
       isSyncing.current = true;
 
-      // Step 1: Migrate local data if needed
-      await migrateLocalData();
+      // Step 1: Migrate local data if needed (one-time)
+      if (typeof window !== 'undefined' && !localStorage.getItem(MIGRATION_KEY)) {
+        const localYears = useStore.getState().years;
+        if (localYears.size === 0) {
+          localStorage.setItem(MIGRATION_KEY, new Date().toISOString());
+        } else {
+          console.log('[DbSync] Migrating', localYears.size, 'year(s) from localStorage to DB...');
+          try {
+            const yearsObj: Record<string, YearData> = {};
+            localYears.forEach((data, year) => {
+              yearsObj[year.toString()] = data;
+            });
+            const res = await fetch('/api/data/migrate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ years: yearsObj }),
+            });
+            if (res.ok) {
+              const result = await res.json();
+              console.log('[DbSync] Migration result:', result.message);
+              localStorage.setItem(MIGRATION_KEY, new Date().toISOString());
+            }
+          } catch (err) {
+            console.error('[DbSync] Migration error:', err);
+          }
+        }
+      }
 
       // Step 2: Load from DB (source of truth)
       const dbData = await fetchFromDb();
 
       if (cancelled) return;
 
+      const state = useStore.getState();
       if (dbData && dbData.size > 0) {
-        // Replace Zustand store with DB data — clear first to avoid additive duplication
-        dbData.forEach((yearData, year) => {
-          store.removeYear(year);
-          store.addYearData(year, yearData);
-        });
+        replaceStoreWithDb(dbData);
         console.log('[DbSync] Loaded', dbData.size, 'year(s) from DB (replaced)');
+      } else if (dbData && dbData.size === 0 && state.years.size > 0) {
+        // If DB is completely empty but local store has data, it means the DB
+        // was wiped. Wipe the local store too so it can't resurrect the data.
+        console.log('[DbSync] DB is empty! Wiping local store to match DB.');
+        Array.from(state.years.keys()).forEach((y) => state.removeYear(y));
+        prevYearsRef.current = serializeYearsForComparison(useStore.getState().years);
+      } else {
+        prevYearsRef.current = serializeYearsForComparison(useStore.getState().years);
       }
 
-      // Snapshot current state for change detection
-      prevYearsRef.current = serializeYearsForComparison(store.years);
       isSyncing.current = false;
       lastPoll.current = Date.now();
     };
@@ -169,54 +225,43 @@ export function useDbSync() {
   }, [isAuthenticated]);
 
   // ─── Debounced write-back on store changes ────────────────
-  // Ref to hold pending flush data so cleanup can fire it immediately
-  const pendingFlush = useRef<{ snapshot: string; years: Map<number, YearData> } | null>(null);
-
   useEffect(() => {
     if (!isAuthenticated || isSyncing.current) return;
 
-    const currentSnapshot = serializeYearsForComparison(store.years);
+    const currentSnapshot = serializeYearsForComparison(years);
     if (currentSnapshot === prevYearsRef.current) return;
 
-    // Track the pending data for flush-on-unmount
-    pendingFlush.current = { snapshot: currentSnapshot, years: new Map(store.years) };
+    // Track the pending data so the unmount effect below can flush it
+    pendingFlush.current = { snapshot: currentSnapshot, years: new Map(years) };
 
-    // Something changed — debounce the DB write
+    // Something changed — debounce the DB write. The cleanup ONLY clears the
+    // timer: flushing here fired on every store change and defeated the
+    // debounce entirely, producing overlapping writes.
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
-
-    debounceTimer.current = setTimeout(async () => {
-      isSyncing.current = true;
-      prevYearsRef.current = currentSnapshot;
-      pendingFlush.current = null;
-
-      // Push all years to DB
-      const promises: Promise<void>[] = [];
-      store.years.forEach((data, year) => {
-        promises.push(pushYearToDb(year, data));
-      });
-
-      await Promise.all(promises);
-      console.log('[DbSync] Pushed', promises.length, 'year(s) to DB');
-      isSyncing.current = false;
+    debounceTimer.current = setTimeout(() => {
+      debounceTimer.current = null;
+      void flushPending();
     }, SYNC_DEBOUNCE_MS);
 
     return () => {
-      // On unmount/re-render: flush pending writes immediately instead of canceling
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
         debounceTimer.current = null;
       }
+    };
+  }, [isAuthenticated, years, flushPending]);
+
+  // ─── Flush on real unmount / logout only ──────────────────
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    return () => {
       if (pendingFlush.current) {
-        const { snapshot, years: pendingYears } = pendingFlush.current;
-        pendingFlush.current = null;
-        prevYearsRef.current = snapshot;
-        console.log('[DbSync] Flushing', pendingYears.size, 'year(s) to DB on cleanup');
-        pendingYears.forEach((data, year) => {
-          pushYearToDb(year, data); // fire-and-forget
-        });
+        console.log('[DbSync] Flushing pending year(s) to DB on unmount');
+        void flushPending(); // fire-and-forget
       }
     };
-  }, [isAuthenticated, store.years, pushYearToDb]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
 
   // ─── Polling for updates from other users ─────────────────
   useEffect(() => {
@@ -224,24 +269,22 @@ export function useDbSync() {
 
     const pollInterval = setInterval(async () => {
       if (isSyncing.current) return;
+      // Don't clobber local changes that haven't been flushed yet
+      if (pendingFlush.current || debounceTimer.current) return;
       if (Date.now() - lastPoll.current < POLL_INTERVAL_MS) return;
 
       lastPoll.current = Date.now();
       const dbData = await fetchFromDb();
 
-      if (dbData && dbData.size > 0) {
+      if (dbData && dbData.size > 0 && !pendingFlush.current && !debounceTimer.current) {
         isSyncing.current = true;
-        dbData.forEach((yearData, year) => {
-          store.removeYear(year);
-          store.addYearData(year, yearData);
-        });
-        prevYearsRef.current = serializeYearsForComparison(store.years);
+        replaceStoreWithDb(dbData);
         isSyncing.current = false;
       }
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(pollInterval);
-  }, [isAuthenticated, fetchFromDb, store]);
+  }, [isAuthenticated, fetchFromDb, replaceStoreWithDb]);
 }
 
 /**

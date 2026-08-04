@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { DEFAULT_FACILITY_NAME } from "@/lib/app-config";
 import {
-  enforceRateLimit,
+  enforceDbRateLimit,
   getClientIp,
   isAdminSession,
 } from "@/lib/security";
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await auth();
     const clientIp = getClientIp(request);
-    const rateLimitResult = enforceRateLimit(`register:${clientIp}`, {
+    const rateLimitResult = await enforceDbRateLimit(`register:${clientIp}`, {
       maxRequests: 5,
       windowMs: 15 * 60 * 1000,
     });
@@ -72,7 +72,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const assignedRole = adminRequest ? data.role : "ANALYST";
+    // Self-registered users get read-only access; only an admin can grant
+    // ANALYST/ADMIN roles.
+    const assignedRole = adminRequest ? data.role : "VIEWER";
     const organizationName = adminRequest
       ? data.organization
       : process.env.DEFAULT_ORGANIZATION_NAME || DEFAULT_FACILITY_NAME;
@@ -87,12 +89,19 @@ export async function POST(request: NextRequest) {
     });
 
     if (!org) {
-      org = await prisma.organization.create({
-        data: {
-          name: organizationName,
-          slug: orgSlug,
-        },
-      });
+      try {
+        org = await prisma.organization.create({
+          data: {
+            name: organizationName,
+            slug: orgSlug,
+          },
+        });
+      } catch {
+        // Two concurrent registrations can race the find-then-create and hit
+        // the unique constraint (P2002) - re-read instead of returning a 500.
+        org = await prisma.organization.findUnique({ where: { slug: orgSlug } });
+        if (!org) throw new Error('Failed to create or find organization');
+      }
     }
 
     const hashedPassword = await bcrypt.hash(data.password, 12);

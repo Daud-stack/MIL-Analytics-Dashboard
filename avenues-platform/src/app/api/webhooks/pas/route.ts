@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { timingSafeEqualString } from '@/lib/security';
 import { z } from 'zod';
 
 /**
@@ -52,12 +53,7 @@ function authenticateWebhook(request: NextRequest): boolean {
 
   const token = authHeader.slice(7);
   // Constant-time comparison to prevent timing attacks
-  if (token.length !== secret.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < token.length; i++) {
-    mismatch |= token.charCodeAt(i) ^ secret.charCodeAt(i);
-  }
-  return mismatch === 0;
+  return timingSafeEqualString(token, secret);
 }
 
 // ─── Route Handler ───────────────────────────────────────────
@@ -90,6 +86,16 @@ export async function POST(request: NextRequest) {
     }
 
     const { orgSlug, year, category, data, source } = result.data;
+
+    // 2b. If WEBHOOK_ORG_SLUG is configured, this secret is bound to that org -
+    // the payload cannot target another tenant.
+    const pinnedSlug = process.env.WEBHOOK_ORG_SLUG;
+    if (pinnedSlug && orgSlug !== pinnedSlug) {
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'orgSlug does not match the org this webhook secret is bound to' },
+        { status: 403 }
+      );
+    }
 
     // 3. Look up the organization
     const org = await prisma.organization.findUnique({

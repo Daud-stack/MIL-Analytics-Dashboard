@@ -38,8 +38,82 @@ model Organization {
   users     User[]
   yearData  YearDataRecord[]
   uploads   DataUpload[]
+  apiKeys   ApiKey[]
+  episodes  Episode[]
 
   @@map("organizations")
+}
+
+// ─── API Keys (per-org, hashed) ──────────────────────────────
+
+/// Machine-to-machine API keys, each bound to ONE organization.
+/// Only the SHA-256 hash of the key is stored; the raw key is shown once at
+/// creation. Replaces the single shared INGEST_API_KEY env secret.
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String // human label, e.g. "file-watcher on reception PC"
+  keyHash    String    @unique // sha256 hex of the raw key
+  orgId      String
+  createdBy  String? // user id of the admin who created it
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("api_keys")
+}
+
+// ─── Durable Rate Limiting ───────────────────────────────────
+
+/// Fixed-window rate-limit counters that survive serverless instance churn.
+/// One row per (scope key) e.g. "login:user@x.com" or "register:1.2.3.4".
+model RateLimitEntry {
+  key     String   @id
+  count   Int      @default(0)
+  resetAt DateTime
+
+  @@index([resetAt])
+  @@map("rate_limits")
+}
+
+// ─── Normalized Episodes (phase 1) ───────────────────────────
+
+/// One row per hospital episode, extracted from Location/Episode uploads.
+/// This is the queryable, SQL-aggregatable representation of what currently
+/// lives inside year_data.location.rawRows JSON blobs. Phase 1: dual-write on
+/// ingest + backfill script + /api/episodes aggregation endpoint.
+model Episode {
+  id         String    @id @default(cuid())
+  orgId      String
+  year       Int
+  episodeKey String // e.g. "E12345" — unique per org+year
+  month      Int? // 0-11, derived from admission date
+  admDate    DateTime?
+  revenue    Float     @default(0)
+  los        Float?
+  doctor     String?
+  specialty  String?
+  medAid     String?
+  ward       String?
+  icdCode    String?
+  cptCode    String?
+  gender     String?
+  ageGroup   String?
+  city       String?
+  /// Source file hash this row came from (for idempotent re-ingest)
+  sourceHash String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, year, episodeKey])
+  @@index([orgId, year, month])
+  @@index([orgId, year, doctor])
+  @@index([orgId, year, medAid])
+  @@map("episodes")
 }
 
 // ─── Core Data ───────────────────────────────────────────────

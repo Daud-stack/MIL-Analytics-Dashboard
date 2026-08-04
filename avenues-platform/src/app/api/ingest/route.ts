@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
+import { resolveApiKeyOrg } from '@/lib/security';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -41,16 +42,22 @@ async function resolveOrgId(request: NextRequest): Promise<
 > {
   const session = await auth();
   const apiKey = request.headers.get('x-api-key');
-  const validApiKey =
-    !!process.env.INGEST_API_KEY && apiKey === process.env.INGEST_API_KEY;
 
-  if (validApiKey) {
-    const orgId = request.headers.get('x-org-id');
+  if (apiKey) {
+    // Per-org hashed keys (api_keys table); legacy env key honoured during
+    // migration. The org comes from the key, not from the caller.
+    const headerOrgId = request.headers.get('x-org-id');
+    const orgId = await resolveApiKeyOrg(apiKey, headerOrgId);
     if (!orgId) {
       return {
+        response: NextResponse.json({ error: 'Invalid API key' }, { status: 401 }),
+      };
+    }
+    if (headerOrgId && headerOrgId !== orgId) {
+      return {
         response: NextResponse.json(
-          { error: 'X-Org-Id header required when using API key' },
-          { status: 400 }
+          { error: 'X-Org-Id does not match the org this API key is bound to' },
+          { status: 403 }
         ),
       };
     }

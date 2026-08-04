@@ -35,8 +35,11 @@ export function NotificationBell() {
 
   const count = unreadCount();
 
+  const [mounted, setMounted] = useState(false);
+
   // Close on outside click
   useEffect(() => {
+    setMounted(true);
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
@@ -54,7 +57,7 @@ export function NotificationBell() {
         aria-label="Notifications"
       >
         <Bell className="h-4 w-4" />
-        {count > 0 && (
+        {mounted && count > 0 && (
           <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center px-1 animate-in zoom-in">
             {count > 99 ? '99+' : count}
           </span>

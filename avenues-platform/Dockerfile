@@ -67,5 +67,7 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Run database migrations and start
-CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null; npx prisma db push --accept-data-loss 2>/dev/null; npm start"]
+# Run database migrations and start.
+# Note: no --accept-data-loss and no silenced stderr — a failed migration
+# should be visible, not destructive.
+CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]

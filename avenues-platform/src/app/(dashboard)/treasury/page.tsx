@@ -8,10 +8,11 @@ import {
   ShieldCheck, 
   AlertCircle, 
   Clock, 
-  ArrowUpRight, 
+  ArrowUpRight,
   ArrowDownRight,
   Calculator,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  CreditCard
 } from 'lucide-react';
 import { useDashboard, useClaims } from '@/store';
 import { calculateFinancialHealth, FinancialHealth } from '@/lib/finance';
@@ -53,6 +54,16 @@ export default function TreasuryPage() {
       { name: '90+ Days (Risk)', value: total * 0.1, fill: '#ef4444' },
     ];
   }, [health, dashData]);
+
+  // Payments Composition Data
+  const paymentsComposition = useMemo(() => {
+    if (!dashData?.paymentsByType) return [];
+    return Object.entries(dashData.paymentsByType).map(([type, data]) => ({
+      name: type,
+      amount: data.amount,
+      count: data.count
+    })).sort((a, b) => b.amount - a.amount);
+  }, [dashData]);
 
   if (!dashData) return null;
 
@@ -201,6 +212,54 @@ export default function TreasuryPage() {
           </div>
         </div>
       </div>
+
+      {paymentsComposition.length > 0 && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Payments Composition Chart */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h3 className="text-sm font-semibold text-gray-900 mb-6 flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-emerald-500" />
+              Payments & Deposits Composition
+            </h3>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={paymentsComposition} layout="vertical" margin={{ left: 50, right: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                <XAxis type="number" tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} tick={{ fontSize: 10 }} axisLine={false} />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v) => formatCurrency(Number(v))} cursor={{ fill: '#f8fafc' }} />
+                <Bar dataKey="amount" fill="#10b981" radius={[0, 4, 4, 0]} barSize={24} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h3 className="text-sm font-semibold text-gray-900 mb-6 flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-blue-500" />
+              Payment Volume by Type
+            </h3>
+            <div className="overflow-y-auto max-h-[240px] pr-2">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs font-medium text-gray-500">
+                    <th className="pb-2">Payment Type</th>
+                    <th className="pb-2 text-right">Transactions</th>
+                    <th className="pb-2 text-right">Total Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {paymentsComposition.map((item) => (
+                    <tr key={item.name} className="hover:bg-gray-50">
+                      <td className="py-3 text-gray-900 font-medium">{item.name}</td>
+                      <td className="py-3 text-right text-gray-600">{formatNumber(item.count)}</td>
+                      <td className="py-3 text-right font-semibold text-gray-900">{formatCurrency(item.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Treasury Findings & Action Items */}
       <div className="grid gap-6 md:grid-cols-2">
