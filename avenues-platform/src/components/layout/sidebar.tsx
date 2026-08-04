@@ -62,12 +62,15 @@ const sections: SidebarSection[] = [
     items: [
       { label: "Upload Data", href: "/upload", icon: Upload },
       { label: "2026 KPI Master", href: "/kpis-2026", icon: ShieldCheck },
+      { label: "KPI Catalog", href: "/kpi-catalog", icon: Database },
+      { label: "System Health", href: "/system-health", icon: Activity },
       { label: "Hospital", href: "/hospital", icon: LayoutDashboard },
       { label: "Retail", href: "/retail", icon: Pill },
       { label: "Lab", href: "/lab", icon: FlaskConical },
       { label: "Drill-Down", href: "/drilldown", icon: Layers },
       { label: "Episode Analytics", href: "/episodes", icon: Activity },
     ],
+
 
   },
   {
