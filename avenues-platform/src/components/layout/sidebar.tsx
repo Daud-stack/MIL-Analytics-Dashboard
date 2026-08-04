@@ -39,7 +39,9 @@ import {
   ShieldAlert,
   Zap,
   Wallet,
+  Receipt,
 } from "lucide-react";
+
 
 interface SidebarItem {
   label: string;
@@ -83,6 +85,7 @@ const sections: SidebarSection[] = [
     title: "FINANCIAL",
     key: "financial",
     items: [
+      { label: "Billing Audit", href: "/billing-audit", icon: Receipt },
       { label: "Revenue", href: "/revenue", icon: DollarSign },
       { label: "Revenue Leakage", href: "/revenue/leakage", icon: TrendingUp },
       { label: "Pharmacy", href: "/pharmacy", icon: Pill },
@@ -90,6 +93,7 @@ const sections: SidebarSection[] = [
       { label: "Claims", href: "/claims", icon: FileText },
     ],
   },
+
   {
     title: "AI & ANALYTICS",
     key: "ai",
