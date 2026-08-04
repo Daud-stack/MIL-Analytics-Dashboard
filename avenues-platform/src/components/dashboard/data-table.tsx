@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { ChevronUp, ChevronDown, Download } from 'lucide-react';
+import { ChevronUp, ChevronDown, Download, Search } from 'lucide-react';
 import clsx from 'clsx';
 
 export interface ColumnConfig {
@@ -39,7 +39,7 @@ export const DataTable: React.FC<DataTableProps> = ({
     return data.filter((row) =>
       columns.some((col) => {
         const value = row[col.key];
-        const formatted = col.format ? col.format(value) : String(value);
+        const formatted = col.format ? col.format(value) : String(value ?? '');
         return formatted.toLowerCase().includes(searchTerm.toLowerCase());
       })
     );
@@ -58,8 +58,8 @@ export const DataTable: React.FC<DataTableProps> = ({
           return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
         }
 
-        const aStr = String(aVal).toLowerCase();
-        const bStr = String(bVal).toLowerCase();
+        const aStr = String(aVal ?? '').toLowerCase();
+        const bStr = String(bVal ?? '').toLowerCase();
         return sortOrder === 'asc'
           ? aStr.localeCompare(bStr)
           : bStr.localeCompare(aStr);
@@ -75,7 +75,7 @@ export const DataTable: React.FC<DataTableProps> = ({
     return sortedData.slice(start, start + pageSize);
   }, [sortedData, currentPage, pageSize]);
 
-  const totalPages = Math.ceil(sortedData.length / pageSize);
+  const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize));
 
   const handleSort = (key: string) => {
     if (!columns.find((col) => col.key === key)?.sortable) return;
@@ -95,7 +95,7 @@ export const DataTable: React.FC<DataTableProps> = ({
       columns
         .map((col) => {
           const value = row[col.key];
-          const formatted = col.format ? col.format(value) : String(value);
+          const formatted = col.format ? col.format(value) : String(value ?? '');
           return `"${formatted.replace(/"/g, '""')}"`;
         })
         .join(',')
@@ -123,53 +123,56 @@ export const DataTable: React.FC<DataTableProps> = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       {/* Header Controls */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {searchable && (
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(0);
-            }}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search table..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(0);
+              }}
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            />
+          </div>
         )}
         {exportable && (
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-teal-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-teal-700 transition-colors shadow-xs"
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-3.5 w-3.5" />
             Export CSV
           </button>
         )}
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr className="border-b border-gray-200">
+      {/* Table Container */}
+      <div className="w-full overflow-x-auto rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-xs">
+        <table className="w-full text-left border-collapse min-w-[600px]">
+          <thead className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+            <tr>
               {columns.map((col) => (
                 <th
                   key={col.key}
                   onClick={() => handleSort(col.key)}
                   className={clsx(
-                    'px-6 py-3 text-left text-sm font-semibold text-gray-900',
-                    col.sortable && 'cursor-pointer hover:bg-gray-100'
+                    'px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 select-none',
+                    col.sortable && 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors'
                   )}
                 >
-                  <div className="flex items-center gap-2">
-                    {col.header}
+                  <div className="flex items-center gap-1.5">
+                    <span>{col.header}</span>
                     {col.sortable && sortKey === col.key && (
                       sortOrder === 'asc' ? (
-                        <ChevronUp className="h-4 w-4" />
+                        <ChevronUp className="h-3.5 w-3.5 text-teal-500" />
                       ) : (
-                        <ChevronDown className="h-4 w-4" />
+                        <ChevronDown className="h-3.5 w-3.5 text-teal-500" />
                       )
                     )}
                   </div>
@@ -177,18 +180,18 @@ export const DataTable: React.FC<DataTableProps> = ({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
             {paginatedData.length > 0 ? (
               paginatedData.map((row, rowIdx) => (
                 <tr
                   key={rowIdx}
-                  className="hover:bg-gray-50 transition-colors"
+                  className="hover:bg-teal-500/5 dark:hover:bg-teal-500/10 transition-colors"
                 >
                   {columns.map((col) => (
                     <td
                       key={`${rowIdx}-${col.key}`}
                       className={clsx(
-                        'px-6 py-4 text-sm text-gray-900',
+                        'px-4 py-3 text-xs text-slate-800 dark:text-slate-200 break-words',
                         getAlignClass(col.align)
                       )}
                     >
@@ -201,9 +204,9 @@ export const DataTable: React.FC<DataTableProps> = ({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-6 py-8 text-center text-sm text-gray-500"
+                  className="px-6 py-8 text-center text-xs font-medium text-slate-500 dark:text-slate-400"
                 >
-                  No data found
+                  No matching data records found
                 </td>
               </tr>
             )}
@@ -213,22 +216,23 @@ export const DataTable: React.FC<DataTableProps> = ({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-600">
-            Page {currentPage + 1} of {totalPages} ({sortedData.length} results)
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-1 py-1">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Showing Page <span className="font-bold text-slate-900 dark:text-slate-100">{currentPage + 1}</span> of{' '}
+            <span className="font-bold text-slate-900 dark:text-slate-100">{totalPages}</span> ({sortedData.length} records)
           </span>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
               disabled={currentPage === 0}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Previous
             </button>
             <button
               onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
               disabled={currentPage === totalPages - 1}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Next
             </button>
