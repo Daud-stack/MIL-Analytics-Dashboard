@@ -98,6 +98,7 @@ const sections: SidebarSection[] = [
     title: "AI & ANALYTICS",
     key: "ai",
     items: [
+      { label: "AI Anomaly Detection", href: "/ai-insights", icon: Brain },
       { label: "Insights", href: "/insights", icon: Lightbulb },
       { label: "Forecasting", href: "/forecast", icon: TrendingUp },
       { label: "Correlations", href: "/correlations", icon: GitBranch },
