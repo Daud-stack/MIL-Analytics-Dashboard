@@ -7,6 +7,13 @@ export function sha256Hex(value: string): string {
   return crypto.createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+/** Anonymize patient names or member numbers using SHA-256 (Data Engineering Security Undercurrent) */
+export function hashPatientPii(value: string): string {
+  if (!value || value.trim() === "") return "ANONYMOUS";
+  return sha256Hex(value.trim().toLowerCase()).slice(0, 16);
+}
+
+
 /** Generate a new raw API key (shown to the admin once). */
 export function generateApiKey(): string {
   return `ak_${crypto.randomBytes(24).toString("base64url")}`;
