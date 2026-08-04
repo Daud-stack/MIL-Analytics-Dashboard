@@ -131,30 +131,33 @@ export function generateSampleDashboardMetrics(year: number): DashboardMetrics {
   };
 
   for (let i = 0; i < 12; i++) {
-    const baseRevenue = 3000000 + rand() * 1500000;
+    // 2026 Management Dashboard Exact KPI Monthly Distributions
+    const baseRevenue = (7813491.14 / 12) * (0.9 + rand() * 0.2);
     monthRevenue.push(baseRevenue);
-    monthEpisodes.push(900 + Math.floor(rand() * 300));
+    monthEpisodes.push(Math.floor((9430 / 12) * (0.9 + rand() * 0.2)));
 
-    admCasualty.push(250 + Math.floor(rand() * 120));
-    admDay.push(180 + Math.floor(rand() * 120));
-    admInpatient.push(350 + Math.floor(rand() * 200));
-    admLab.push(400 + Math.floor(rand() * 200));
+    admCasualty.push(Math.floor((8974 / 12) * (0.9 + rand() * 0.2)));
+    admDay.push(Math.floor((904 / 12) * (0.9 + rand() * 0.2)));
+    admInpatient.push(Math.floor((7749 / 12) * (0.9 + rand() * 0.2)));
+    admLab.push(Math.floor(25 + rand() * 10));
 
-    theatreCases.push(60 + Math.floor(rand() * 40));
-    theatreMinutes.push(8000 + Math.floor(rand() * 4000));
-    theatreUtil.push(70 + rand() * 25);
-    theatrePctOcc.push(60 + rand() * 30);
+    theatreCases.push(Math.floor(150 + rand() * 30));
+    theatreMinutes.push(18000 + Math.floor(rand() * 4000));
+    theatreUtil.push(72 + rand() * 15);
+    theatrePctOcc.push(68 + rand() * 20);
 
-    pharmacyRx.push(1500 + Math.floor(rand() * 500));
-    pharmacyRev.push(1000000 + rand() * 400000);
+    pharmacyRx.push(2200 + Math.floor(rand() * 400));
+    pharmacyRev.push((2164145.98 / 12) * (0.9 + rand() * 0.2));
 
-    occMidnight.push(200 + Math.floor(rand() * 80));
-    casToInpatient.push(15 + Math.floor(rand() * 10));
-    epsFinalised.push(850 + Math.floor(rand() * 250));
-    dischNotFinalised.push(50 + Math.floor(rand() * 30));
-    revPerPatDay.push(4500 + rand() * 2000);
-    gpEthical.push(100 + Math.floor(rand() * 80));
-    gpSurgical.push(60 + Math.floor(rand() * 50));
+    occMidnight.push(210 + Math.floor(rand() * 40));
+    casToInpatient.push(35 + Math.floor(rand() * 10));
+    epsFinalised.push(Math.floor((9430 / 12) * (0.9 + rand() * 0.2)));
+    
+    // Discharges Not Finalised (DNFB) 2026 Gap: 89,325 total episodes @ $10.1M
+    dischNotFinalised.push(Math.floor(89325 / 12));
+    revPerPatDay.push(3420.60);
+    gpEthical.push(115 + Math.floor(rand() * 20));
+    gpSurgical.push(75 + Math.floor(rand() * 15));
 
     // Ward data
     WARDS.forEach((ward) => {
@@ -166,18 +169,19 @@ export function generateSampleDashboardMetrics(year: number): DashboardMetrics {
     // Location data
     LOCATIONS_OF_CARE.forEach((loc) => {
       patDaysLOC[loc].push(100 + Math.floor(rand() * 80));
-      revLocation[loc].push(baseRevenue / 5 + rand() * 200000);
+      revLocation[loc].push(baseRevenue / 5 + rand() * 50000);
     });
 
-    // Debt reconciliation
-    const brought = 500000 + rand() * 200000;
-    const rev = baseRevenue * 0.95;
-    const payment = rev * 0.85;
+    // Debt reconciliation: 2026 BFG -$10,079,270.55
+    const brought = (-10079270.55 / 12);
+    const rev = baseRevenue;
+    const payment = (8796530.51 / 12) * (0.9 + rand() * 0.2);
     debtRecon.brought.push(brought);
     debtRecon.revenue.push(rev);
     debtRecon.payments.push(payment);
-    debtRecon.sundries.push(rand() * 50000);
+    debtRecon.sundries.push(15310.18);
     debtRecon.total.push(brought + rev - payment);
+
 
     // Payments
     payments.deposits.push(baseRevenue * 0.15);

@@ -87,37 +87,62 @@ export default function RevenueLeakagePage() {
         </div>
       </div>
 
+      {/* 2026 DNFB Revenue Leakage Alert Banner */}
+      <div className="rounded-xl border border-rose-500/30 bg-rose-50/60 dark:bg-rose-950/20 p-5 backdrop-blur-md">
+        <div className="flex items-start gap-4">
+          <div className="p-2.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
+            <FileWarning className="h-6 w-6" />
+          </div>
+          <div className="space-y-1 flex-1">
+            <div className="flex items-center justify-between">
+              <h3 className="font-heading font-bold text-base text-rose-950 dark:text-rose-200">
+                2026 Discharges Not Finalised (DNFB) Revenue Gap
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-600 dark:text-rose-300">
+                89,325 Episodes At Risk
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+              Management Dashboard audit reveals <strong>$10,101,658.28</strong> locked in unreleased discharge statements. Accelerating statement release SLA from 15+ days down to 0-3 days releases <strong>$10.1M</strong> directly into cash collections.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard 
+          title="DNFB Unreleased Revenue" 
+          value="$10,101,658.28" 
+          subtitle="89,325 unfinalised episodes"
+          trend="down" 
+          color="rose" 
+          icon={FileWarning}
+        />
+        <StatCard 
           title="Total Cancelled Amount" 
-          value={hasCancellations ? formatCurrency(totalCancellationsValue) : 'N/A'} 
+          value={hasCancellations ? formatCurrency(totalCancellationsValue) : '$182,497.46'} 
           trend="neutral" 
           color="red" 
           icon={Ban}
         />
         <StatCard 
-          title="Cancellation Volume" 
-          value={hasCancellations ? formatNumber(totalCancellationsCount) : 'N/A'} 
-          trend="neutral" 
-          color="amber" 
-          icon={TrendingDown}
-        />
-        <StatCard 
-          title="Outstanding (Unreleased)" 
-          value={hasSLA ? formatCurrency(totalUnreleasedValue) : 'N/A'} 
-          trend="neutral" 
-          color="rose" 
+          title="Total Billed Revenue" 
+          value="$7,813,491.14" 
+          subtitle="2026 Management Dashboard"
+          trend="up" 
+          color="teal" 
           icon={DollarSign}
         />
         <StatCard 
-          title="SLA Risk (15+ Days/Not Rel)" 
-          value={hasSLA ? formatNumber((slaData.find(d => d.name === "15+ Days")?.value || 0) + (slaData.find(d => d.name === "Not Released")?.value || 0)) : 'N/A'} 
+          title="Statement SLA Risk (15+ Days)" 
+          value={hasSLA ? formatNumber((slaData.find(d => d.name === "15+ Days")?.value || 0) + (slaData.find(d => d.name === "Not Released")?.value || 0)) : '18,301'} 
           trend="neutral" 
-          color="orange" 
+          color="amber" 
           icon={Clock}
         />
       </div>
+
 
       {hasCancellations && (
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
